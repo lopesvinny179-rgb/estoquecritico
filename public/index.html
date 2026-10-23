@@ -1,0 +1,942 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Estoque Crítico</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Crect width=%2232%22 height=%2232%22 rx=%227%22 fill=%22%23a8630a%22/%3E%3Cpath d=%22M8 22h4V14H8zm6 0h4V9h-4zm6 0h4v-5h-4z%22 fill=%22white%22/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=Public+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: barra de status das referências, painel de atualização em passos, depois o crítico (resumo + tabela filtrável). */
+:root {
+  --bg: #f3f5f2; --surface: #ffffff; --surface-2: #eef1ed; --ink: #17201b; --muted: #5b6a62; --line: #d9e0db;
+  --accent: #a8630a; --accent-strong: #8a5106; --accent-soft: #f6ead6; --on-accent: #ffffff;
+  --ok: #2c7a4b; --ok-soft: #e1f0e6; --bad: #b0392a; --bad-soft: #f7e3df; --warn: #a8630a;
+  --display: "Archivo", "Arial Narrow", system-ui, sans-serif;
+  --body: "Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --r: 10px;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #111613; --surface: #19201c; --surface-2: #212a25; --ink: #e6ece8; --muted: #9aa9a1; --line: #2c3731;
+  --accent: #e3a043; --accent-strong: #f0b660; --accent-soft: #3a2c16; --on-accent: #1a1206;
+  --ok: #5fc08a; --ok-soft: #1c3427; --bad: #ec7d6c; --bad-soft: #3d221d; --warn: #e3a043; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #111613; --surface: #19201c; --surface-2: #212a25; --ink: #e6ece8; --muted: #9aa9a1; --line: #2c3731;
+  --accent: #e3a043; --accent-strong: #f0b660; --accent-soft: #3a2c16; --on-accent: #1a1206;
+  --ok: #5fc08a; --ok-soft: #1c3427; --bad: #ec7d6c; --bad-soft: #3d221d; --warn: #e3a043; color-scheme: dark; }
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 14px; line-height: 1.45; }
+.wrap { max-width: 1280px; margin: 0 auto; padding-block: 20px 60px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 22px; }
+h1, h2, h3 { font-family: var(--display); margin: 0; text-wrap: balance; letter-spacing: -0.01em; }
+h1 { font-size: 28px; font-weight: 800; }
+h2 { font-size: 19px; font-weight: 700; }
+h3 { font-size: 15px; font-weight: 700; }
+.eyebrow { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.muted { color: var(--muted); }
+.num { font-variant-numeric: tabular-nums; }
+header.top { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: end; justify-content: space-between; }
+header.top .title { display: grid; gap: 4px; }
+.refs { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); font-size: 12.5px; white-space: nowrap; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+.dot.ok { background: var(--ok); } .dot.bad { background: var(--bad); } .dot.warn { background: var(--warn); }
+section.panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 18px; display: grid; gap: 16px; min-width: 0; }
+.panel-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 16px; align-items: baseline; }
+.steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.drop { position: relative; border: 1.5px dashed var(--line); border-radius: var(--r); padding: 14px; display: grid; gap: 6px; background: var(--surface-2); transition: border-color .15s, background .15s; min-width: 0; }
+.drop.over { border-color: var(--accent); background: var(--accent-soft); }
+.drop.has { border-style: solid; border-color: var(--ok); background: var(--ok-soft); }
+.drop input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; }
+.drop .step { font-family: var(--display); font-weight: 800; font-size: 13px; color: var(--accent); }
+.drop .fname { font-weight: 600; overflow-wrap: anywhere; }
+.drop .hint { font-size: 12.5px; color: var(--muted); }
+.params { display: flex; flex-wrap: wrap; gap: 12px 18px; align-items: end; }
+.field { display: grid; gap: 4px; }
+.field label { font-size: 12px; color: var(--muted); font-weight: 600; }
+input[type=date], input[type=month], input[type=number], input[type=search], select, textarea {
+  font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 7px; padding: 7px 9px; min-width: 0; }
+input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible, .drop:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+input[type=number] { width: 80px; }
+button { font: inherit; cursor: pointer; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); padding: 8px 14px; font-weight: 600; }
+button:hover:not(:disabled) { border-color: var(--accent); }
+button:disabled { opacity: .5; cursor: not-allowed; }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-family: var(--display); font-weight: 700; font-size: 15px; padding: 10px 26px; letter-spacing: .02em; }
+button.primary:hover:not(:disabled) { background: var(--accent-strong); border-color: var(--accent-strong); }
+button.small { padding: 5px 10px; font-size: 12.5px; }
+.run-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.bar { height: 6px; background: var(--surface-2); border-radius: 3px; overflow: hidden; flex: 1 1 200px; min-width: 120px; }
+.bar > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+.log { font-size: 12.5px; color: var(--muted); max-height: 140px; overflow: auto; display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.log li.err { color: var(--bad); font-weight: 600; }
+.log li.ok { color: var(--ok); font-weight: 600; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
+.tile { border: 1px solid var(--line); border-radius: var(--r); padding: 12px 14px; display: grid; gap: 2px; background: var(--surface); }
+.tile .v { font-family: var(--display); font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.tile .s { font-size: 12px; color: var(--muted); }
+.filters { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: end; }
+.filters .field select { max-width: 220px; }
+.check { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; padding-bottom: 8px; }
+.tablebox { overflow: auto; max-height: 70vh; border: 1px solid var(--line); border-radius: var(--r); }
+table { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+th, td { padding: 6px 8px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+th { position: sticky; top: 0; background: var(--surface-2); font-weight: 600; font-size: 11.5px; color: var(--muted); cursor: pointer; user-select: none; z-index: 1; }
+th.l, td.l { text-align: left; }
+th[aria-sort] { color: var(--ink); }
+th[draggable="true"] { cursor: grab; }
+th.dragging { opacity: .45; }
+th.drop-before { box-shadow: inset 3px 0 0 var(--accent); }
+th.drop-after { box-shadow: inset -3px 0 0 var(--accent); }
+details.cols summary { cursor: pointer; font-weight: 600; font-size: 13px; }
+.col-list { list-style: none; margin: 10px 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 6px; }
+.col-list li { display: flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 7px; padding: 4px 6px 4px 10px; background: var(--surface); min-width: 0; }
+.col-list li[draggable="true"] { cursor: grab; }
+.col-list li.drop-before { box-shadow: inset 0 3px 0 var(--accent); }
+.col-list li .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.col-list li.off .nm { color: var(--muted); text-decoration: line-through; }
+.col-list button { padding: 2px 8px; font-size: 12px; }
+td.note { text-align: left; white-space: normal; min-width: 120px; max-width: 260px; cursor: text; background: color-mix(in srgb, var(--accent-soft) 45%, transparent); }
+td.note.empty { color: var(--muted); }
+td.note.empty::before { content: "+"; opacity: .45; }
+td.note:hover { outline: 1px dashed var(--accent); outline-offset: -2px; }
+td.note.saving { opacity: .55; }
+td.note input { width: 100%; min-width: 140px; font: inherit; padding: 4px 6px; }
+.notes-box { overflow: auto; border: 1px solid var(--line); border-radius: var(--r); max-height: 60vh; }
+.notes-box td.l { white-space: normal; }
+.pontos { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.pontos li { display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+.pontos li .txt { flex: 1; min-width: 0; cursor: text; white-space: pre-wrap; overflow-wrap: anywhere; }
+.pontos li textarea { flex: 1; min-height: 60px; font: inherit; }
+.pontos-add { display: flex; gap: 8px; flex-wrap: wrap; }
+.pontos-add textarea { flex: 1 1 260px; min-height: 44px; font: inherit; }
+.two { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); gap: 18px; }
+@media (max-width: 900px) { .two { grid-template-columns: 1fr; } }
+th[aria-sort="descending"]::after { content: " ↓"; } th[aria-sort="ascending"]::after { content: " ↑"; }
+td.desc { max-width: 280px; overflow: hidden; text-overflow: ellipsis; }
+tbody tr:hover td { background: var(--surface-2); }
+.pill { display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+.pill.top { background: var(--accent-soft); color: var(--accent-strong); }
+.days-hi { color: var(--bad); font-weight: 600; }
+.days-ok { color: var(--ok); }
+.neg { color: var(--bad); }
+.more { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+details.rules summary { cursor: pointer; font-family: var(--display); font-weight: 700; font-size: 15px; }
+.rules-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; margin-top: 12px; }
+.rules-grid textarea { width: 100%; min-height: 110px; font-size: 12.5px; resize: vertical; }
+.refs-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.refcard { border: 1px solid var(--line); border-radius: var(--r); padding: 12px; display: grid; gap: 6px; align-content: start; }
+.refcard .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.filebtn { position: relative; overflow: hidden; display: inline-block; }
+.filebtn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.history { display: flex; flex-wrap: wrap; gap: 6px; }
+.history button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.notice { padding: 10px 12px; border-radius: 8px; background: var(--accent-soft); color: var(--ink); font-size: 13px; }
+.notice.bad { background: var(--bad-soft); }
+@media (max-width: 560px) { h1 { font-size: 23px; } .tile .v { font-size: 19px; } button.primary { width: 100%; } }
+.gate { min-height: 100vh; display: grid; place-items: center; padding: 24px 16px; }
+.gate-card { width: min(420px, 100%); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 24px; display: grid; gap: 14px; }
+.gate-card input[type=email] { font: inherit; width: 100%; padding: 9px 11px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+.gate-card button.primary { width: 100%; }
+.userbar { display: flex; gap: 10px; align-items: center; font-size: 12.5px; color: var(--muted); justify-content: flex-end; flex-wrap: wrap; }
+[hidden] { display: none !important; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="gate" id="gate">
+  <form class="gate-card" id="gateForm">
+    <span class="eyebrow">Compras · Armazém da Cerveja</span>
+    <h1>Estoque Crítico</h1>
+    <span class="muted" id="gateMsg">Entre com o seu e-mail da empresa. Vamos mandar um link de acesso.</span>
+    <input type="email" id="gateEmail" required autocomplete="email" placeholder="voce@armazemdacerveja.com.br" aria-label="E-mail">
+    <button class="primary" id="gateBtn" type="submit">Receber link de acesso</button>
+    <span class="muted" id="gateStatus" role="status"></span>
+  </form>
+</div>
+<div class="wrap" id="app" hidden>
+  <div class="userbar"><span id="userEmail"></span><button class="small" id="btnSair" type="button">Sair</button></div>
+  <header class="top">
+    <div class="title">
+      <span class="eyebrow">Compras · Armazém da Cerveja</span>
+      <h1>Estoque Crítico</h1>
+      <span class="muted" id="subtitle">Carregando…</span>
+    </div>
+    <div class="refs" id="refChips"></div>
+  </header>
+
+  <section class="panel" aria-labelledby="hUpd">
+    <div class="panel-head">
+      <h2 id="hUpd">Atualizar o crítico</h2>
+      <span class="muted">Solte os três arquivos do dia, confira as datas e clique em Executar.</span>
+    </div>
+    <div class="steps">
+      <div class="drop" id="drop-estoque">
+        <span class="step">1 · Posição de Estoque</span>
+        <span class="fname" id="fn-estoque">Posição de Estoque.xlsm</span>
+        <span class="hint">Aba Base. Vira a TD_Estoque (Físico, R$ Tabela, Custo médio).</span>
+        <input type="file" id="f-estoque" accept=".xlsx,.xlsm" aria-label="Arquivo Posição de Estoque">
+      </div>
+      <div class="drop" id="drop-vendas">
+        <span class="step">2 · Base Margem do mês anterior</span>
+        <span class="fname" id="fn-vendas">Base Margem_MMAAAA.xlsm</span>
+        <span class="hint">Aba Base. Vira TD_Vendas e TD_Vendas + eventos.</span>
+        <input type="file" id="f-vendas" accept=".xlsx,.xlsm" aria-label="Arquivo Base Margem">
+      </div>
+      <div class="drop" id="drop-compras">
+        <span class="step">3 · Compras Sistema FWI</span>
+        <span class="fname" id="fn-compras">Compras_Sistema FWI.xlsm</span>
+        <span class="hint">Aba Base. Vira Compras período e Boni.</span>
+        <input type="file" id="f-compras" accept=".xlsx,.xlsm" aria-label="Arquivo Compras FWI">
+      </div>
+    </div>
+    <div class="params">
+      <div class="field"><label for="p-data">Data do crítico</label><input type="date" id="p-data"></div>
+      <div class="field"><label for="p-mes">Mês das vendas</label><input type="month" id="p-mes"></div>
+      <div class="field"><label for="p-de">Compras de</label><input type="date" id="p-de"></div>
+      <div class="field"><label for="p-ate">Compras até</label><input type="date" id="p-ate"></div>
+      <div class="field"><label for="p-dias">Dias alvo (W2)</label><input type="number" id="p-dias" min="1" step="1" value="30"></div>
+      <div class="field"><label for="p-ant">Estoque anterior vem de</label><select id="p-ant"></select></div>
+    </div>
+    <div class="run-row">
+      <button class="primary" id="btnRun" disabled>Executar</button>
+      <div class="bar" aria-hidden="true"><i id="barFill"></i></div>
+      <span class="muted num" id="runStatus">Falta escolher os arquivos.</span>
+    </div>
+    <ul class="log" id="log" aria-live="polite"></ul>
+  </section>
+
+  <section class="panel" aria-labelledby="hRes" id="resPanel">
+    <div class="panel-head">
+      <div style="display:grid;gap:4px">
+        <span class="eyebrow" id="resEyebrow">Crítico</span>
+        <h2 id="hRes">Nenhum crítico carregado</h2>
+      </div>
+      <div class="run-row">
+        <div class="history" id="history" aria-label="Críticos salvos"></div>
+        <button id="btnDown" disabled title="Planilha completa, com as 35 colunas, fórmulas e abas de apoio">Baixar crítico completo</button>
+        <button class="primary" id="btnExport" disabled title="Exporta o que está na tela: filtros, ordem e colunas visíveis">Exportar para Excel</button>
+      </div>
+    </div>
+    <div class="tiles" id="tiles"></div>
+    <div class="filters">
+      <div class="field"><label for="fl-reg">Regional</label><select id="fl-reg"><option value="">Todas</option></select></div>
+      <div class="field"><label for="fl-loja">Loja</label><select id="fl-loja"><option value="">Todas</option></select></div>
+      <div class="field"><label for="fl-grupo">Grupo</label><select id="fl-grupo"><option value="">Todos</option></select></div>
+      <div class="field"><label for="fl-q">Buscar produto</label><input type="search" id="fl-q" placeholder="código ou descrição"></div>
+      <label class="check"><input type="checkbox" id="fl-top"> Só Top 20</label>
+      <label class="check"><input type="checkbox" id="fl-crit" checked> Só acima dos dias alvo</label>
+      <label class="check"><input type="checkbox" id="fl-anot"> Só com anotação</label>
+    </div>
+    <details class="cols" id="colsBox">
+      <summary>Organizar colunas</summary>
+      <p class="muted" style="margin:6px 0 0;font-size:12.5px">Arraste os títulos da tabela (ou os itens abaixo) para mudar a ordem. Desmarque para esconder. A ordem fica salva.</p>
+      <ul class="col-list" id="colList"></ul>
+      <div class="run-row" style="margin-top:8px"><button class="small" id="btnColReset">Restaurar ordem padrão</button></div>
+    </details>
+    <div class="tablebox"><table id="tbl"><thead></thead><tbody></tbody></table></div>
+    <div class="more"><span class="muted num" id="countInfo"></span><button class="small" id="btnMore" hidden>Mostrar mais 200</button><button class="small" id="btnExport2" disabled>Exportar esta visão para Excel</button></div>
+  </section>
+
+  <section class="panel" aria-labelledby="hNotes" id="notesPanel">
+    <div class="panel-head">
+      <h2 id="hNotes">Anotações da reunião</h2>
+      <span class="muted" id="notesInfo">Ação, observação, dono e data de cada item. Ficam salvas e passam de um crítico para o outro.</span>
+    </div>
+    <div class="two">
+      <div style="display:grid;gap:10px;min-width:0">
+        <div class="filters">
+          <div class="field"><label for="nt-loja">Loja</label><select id="nt-loja"><option value="">Todas</option></select></div>
+          <div class="field"><label for="nt-dono">Dono</label><select id="nt-dono"><option value="">Todos</option></select></div>
+          <label class="check"><input type="checkbox" id="nt-arq"> Mostrar arquivadas</label>
+        </div>
+        <div class="notes-box"><table id="notesTbl"><thead></thead><tbody></tbody></table></div>
+        <span class="muted" style="font-size:12.5px">Clique numa célula para editar. Para anotar um item novo, use as colunas Ação, Observação, Dono e Data na tabela do crítico acima. Arquive quando o assunto estiver resolvido.</span>
+      </div>
+      <div style="display:grid;gap:10px;align-content:start;min-width:0">
+        <h3>Pontos que geram estoque crítico</h3>
+        <ul class="pontos" id="pontos"></ul>
+        <div class="pontos-add"><textarea id="pontoNovo" placeholder="Novo ponto para a próxima reunião"></textarea><button class="small" id="btnPonto">Adicionar</button></div>
+      </div>
+    </div>
+    <datalist id="dl-acao"></datalist><datalist id="dl-dono"></datalist>
+  </section>
+
+  <section class="panel" aria-labelledby="hRefs">
+    <div class="panel-head">
+      <h2 id="hRefs">Referências fixas</h2>
+      <span class="muted">Ficam salvas aqui. Troque só quando mudarem.</span>
+    </div>
+    <div class="refs-grid">
+      <div class="refcard">
+        <h3>De-para</h3>
+        <span class="muted" id="ref-depara">—</span>
+        <span class="muted" style="font-size:12.5px">Regional, Nº REG., pack (SKU) e execução em loja.</span>
+        <div class="row"><span class="filebtn"><button class="small" tabindex="-1">Trocar</button><input type="file" id="r-depara" accept=".xlsx,.xlsm" aria-label="Trocar De-para"></span></div>
+      </div>
+      <div class="refcard">
+        <h3>Top 20</h3>
+        <span class="muted" id="ref-top20">—</span>
+        <span class="muted" style="font-size:12.5px">Lista das colunas H:M da aba Top 20 (loja, produto, ranking).</span>
+        <div class="row"><span class="filebtn"><button class="small" tabindex="-1">Trocar</button><input type="file" id="r-top20" accept=".xlsx,.xlsm" aria-label="Trocar Top 20"></span></div>
+      </div>
+      <div class="refcard">
+        <h3>Importar de uma planilha Critico</h3>
+        <span class="muted" style="font-size:12.5px">Lê De-para, Top 20 e a última aba Criticos_estoque de um arquivo como o Critico.xlsx, de uma vez.</span>
+        <div class="row"><span class="filebtn"><button class="small" tabindex="-1">Escolher arquivo</button><input type="file" id="r-all" accept=".xlsx,.xlsm" aria-label="Importar de planilha Critico"></span></div>
+      </div>
+      <div class="refcard">
+        <h3>Backup</h3>
+        <span class="muted" style="font-size:12.5px">Um arquivo com tudo que está salvo: referências, críticos, anotações e pontos da reunião.</span>
+        <div class="row"><button class="small" id="btnBackup" type="button">Baixar backup</button><span class="filebtn"><button class="small" tabindex="-1">Restaurar backup</button><input type="file" id="r-backup" accept=".json,application/json" aria-label="Restaurar backup"></span></div>
+        <span class="muted" id="backupStatus" style="font-size:12.5px" role="status"></span>
+      </div>
+    </div>
+    <details class="rules" id="rules">
+      <summary>Regras das dinâmicas (filtros)</summary>
+      <p class="muted" style="margin:8px 0 0">Um item por linha. São os mesmos filtros que estavam nas tabelas dinâmicas da planilha.</p>
+      <div class="rules-grid" id="rulesGrid"></div>
+      <div class="run-row" style="margin-top:12px"><button id="btnSaveRules">Salvar regras</button><button id="btnResetRules">Voltar ao padrão</button><span class="muted" id="rulesStatus"></span></div>
+    </details>
+  </section>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="config.js"></script>
+<script src="engine.js"></script>
+<script src="store.js"></script>
+<script>
+(function () {
+  'use strict';
+  const E = window.CriticoEngine;
+  const $ = id => document.getElementById(id);
+  const fmtI = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 });
+  const fmt1 = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1, minimumFractionDigits: 1 });
+  const fmtR = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
+  const fmtRk = v => Math.abs(v) >= 1e6 ? 'R$ ' + fmt1.format(v / 1e6) + ' mi' : Math.abs(v) >= 1e3 ? 'R$ ' + fmtI.format(v / 1e3) + ' mil' : fmtR.format(v);
+  const KEYS = E.KEYS;
+  const brDate = iso => iso ? iso.split('-').reverse().join('/') : '';
+  const isoToday = () => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 10); };
+  const addDays = (iso, n) => { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
+  const prevMonth = iso => { const d = new Date(iso.slice(0, 7) + '-15T12:00:00'); d.setMonth(d.getMonth() - 1); return d.toISOString().slice(0, 7); };
+  const nomeAba = iso => 'Criticos_estoque_em ' + iso.slice(8, 10) + '_' + iso.slice(5, 7);
+
+  const S = {
+    db: null, assets: null, downloads: null,
+    files: { estoque: null, vendas: null, compras: null },
+    estado: null, cfg: JSON.parse(JSON.stringify(E.DEFAULT_CFG)),
+    depara: null, top20: null, execucoes: [],
+    view: null, viewData: null, lastXlsx: null, rows: [], shown: 200,
+    sort: { k: 'J', dir: -1 }, running: false, local: {}, anot: new Map(), pontos: []
+  };
+
+  // ---------- log/progresso ----------
+  function log(msg, cls) { const li = document.createElement('li'); li.textContent = msg; if (cls) li.className = cls; $('log').appendChild(li); $('log').scrollTop = 1e9; }
+  function setBar(f) { $('barFill').style.width = Math.round(f * 100) + '%'; }
+  const nextFrame = () => new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));
+
+  // ---------- persistência ----------
+  async function fetchAsset(id) {
+    return S.assets.fetch(id);
+  }
+  async function uploadJson(obj) {
+    if (!S.assets) return null;
+    const blob = new Blob([JSON.stringify(obj)], { type: 'application/json' });
+    const res = await S.assets.upload(blob, { type: 'application/json' });
+    return res.id;
+  }
+  async function saveEstado(patch) {
+    S.estado = Object.assign({}, S.estado || {}, patch, { atualizadoEm: new Date().toISOString() });
+    if (S.db) await S.db.doc('estado/atual').set(S.estado);
+  }
+  async function loadExecucoes() {
+    if (!S.db) return [];
+    const snap = await S.db.collection('execucoes').orderBy('data', 'desc').limit(30).get();
+    return snap.docs.map(d => Object.assign({ id: d.id }, d.data()));
+  }
+
+  // ---------- referências ----------
+  function renderRefs() {
+    const chips = [];
+    const c = (ok, label) => `<span class="chip"><span class="dot ${ok}"></span>${label}</span>`;
+    chips.push(S.depara ? c('ok', 'De-para: ' + fmtI.format(S.depara.length) + ' linhas') : c('bad', 'De-para não carregado'));
+    chips.push(S.top20 ? c('ok', 'Top 20' + (S.top20.mes ? ' ' + S.top20.mes : '') + ': ' + S.top20.rows.length + ' itens') : c('bad', 'Top 20 não carregado'));
+    const last = S.execucoes[0];
+    chips.push(last ? c('ok', 'Último crítico: ' + brDate(last.data)) : c('warn', 'Sem crítico anterior'));
+    $('refChips').innerHTML = chips.join('');
+    const e = S.estado || {};
+    $('ref-depara').textContent = S.depara ? `${fmtI.format(S.depara.length)} linhas · ${e.depara && e.depara.origem ? e.depara.origem : ''}${e.depara && e.depara.em ? ' · ' + brDate(e.depara.em.slice(0, 10)) : ''}` : 'Ainda não carregado.';
+    $('ref-top20').textContent = S.top20 ? `${S.top20.rows.length} itens${S.top20.mes ? ' · ' + S.top20.mes : ''}${e.top20 && e.top20.em ? ' · ' + brDate(e.top20.em.slice(0, 10)) : ''}` : 'Ainda não carregado.';
+    renderAntSelect(); updateRunState();
+  }
+  function renderAntSelect() {
+    const data = $('p-data').value || isoToday();
+    const opts = S.execucoes.filter(x => x.data < data);
+    const sel = $('p-ant'); const cur = sel.value;
+    sel.innerHTML = opts.map(x => `<option value="${x.id}">${x.nome} (${brDate(x.data)})</option>`).join('') + '<option value="">Nenhum (estoque anterior = 0)</option>';
+    if (cur && [...sel.options].some(o => o.value === cur)) sel.value = cur;
+  }
+  async function trocarRef(file, tipo) {
+    log('Lendo ' + file.name + '…');
+    try {
+      if (tipo === 'depara' || tipo === 'all') {
+        const rows = await E.lerReferencia(file, 'depara', log);
+        S.depara = rows;
+        const id = await uploadJson(rows);
+        await saveEstado({ depara: { id, origem: file.name, em: new Date().toISOString() } });
+        log('De-para atualizado: ' + rows.length + ' linhas.', 'ok');
+      }
+      if (tipo === 'top20' || tipo === 'all') {
+        const t = await E.lerReferencia(file, 'top20', log);
+        if (!t.rows.length) throw new Error('A aba Top 20 não tem itens nas colunas I:M a partir da linha 4.');
+        S.top20 = t;
+        const id = await uploadJson(t);
+        await saveEstado({ top20: { id, mes: t.mes, origem: file.name, em: new Date().toISOString() } });
+        log('Top 20 atualizado: ' + t.rows.length + ' itens.', 'ok');
+      }
+      if (tipo === 'all') {
+        const c = await E.lerReferencia(file, 'critico', log);
+        const m = /(\d{2})[_-](\d{2})/.exec(c.nome);
+        const ano = new Date().getFullYear();
+        const data = m ? `${ano}-${m[2]}-${m[1]}` : isoToday();
+        const snap = { v: 1, data, nome: c.nome, fonte: 'planilha', params: {}, anterior: c.rows };
+        await salvarExecucao(snap, c.rows.length, null);
+        log('Crítico ' + c.nome + ' guardado como base de estoque anterior.', 'ok');
+      }
+    } catch (err) { log(err.message || String(err), 'err'); }
+    renderRefs();
+  }
+
+  // ---------- execução ----------
+  function setFile(k, f) {
+    S.files[k] = f;
+    $('fn-' + k).textContent = f ? f.name + ' · ' + (f.size / 1048576).toFixed(1) + ' MB' : $('fn-' + k).dataset.def;
+    $('drop-' + k).classList.toggle('has', !!f);
+    if (k === 'vendas' && f) { const m = /_(\d{2})(\d{4})/.exec(f.name); if (m) $('p-mes').value = m[2] + '-' + m[1]; }
+    updateRunState();
+  }
+  function updateRunState(keepStatus) {
+    const miss = [];
+    if (!S.files.estoque) miss.push('Posição de Estoque'); if (!S.files.vendas) miss.push('Base Margem'); if (!S.files.compras) miss.push('Compras FWI');
+    if (!S.depara) miss.push('De-para'); if (!S.top20) miss.push('Top 20');
+    $('btnRun').disabled = S.running || miss.length > 0;
+    if (!S.running && !keepStatus) $('runStatus').textContent = miss.length ? 'Falta: ' + miss.join(', ') + '.' : 'Tudo pronto.';
+  }
+  async function snapshotAnterior(id) {
+    if (!id) return null;
+    const ex = S.execucoes.find(x => x.id === id); if (!ex) return null;
+    if (S.local[id]) return S.local[id];
+    const snap = await fetchAsset(ex.assetId);
+    const rows = snap.anterior || snap.linhas.map(l => [l[0], l[4], l[5], l[6], l[7], l[8], l[9], l[10]]);
+    return { nome: snap.nome, rows };
+  }
+  async function run() {
+    S.running = true; updateRunState(); $('log').innerHTML = ''; setBar(0);
+    const p = {
+      data: $('p-data').value, diasAlvo: +$('p-dias').value || 30, mesVendas: $('p-mes').value,
+      comprasDe: $('p-de').value, comprasAte: $('p-ate').value, ocultarColunas: true,
+      fornecedoresResumo: S.cfg.comprasFornecedores.join('; ')
+    };
+    p.nomeAba = nomeAba(p.data);
+    const t0 = performance.now();
+    try {
+      if (!p.data || !p.mesVendas || !p.comprasDe || !p.comprasAte) throw new Error('Preencha a data do crítico, o mês das vendas e o período de compras.');
+      if (p.comprasDe > p.comprasAte) throw new Error('O período de compras está invertido.');
+      $('runStatus').textContent = 'Lendo arquivos…';
+      const anterior = await snapshotAnterior($('p-ant').value);
+      if (anterior) log('Estoque anterior: ' + anterior.nome + '.');
+      const refs = { depara: S.depara, top20: S.top20, anterior };
+      const pesos = { estoque: [0, .3], vendas: [.3, .85], compras: [.85, .95] };
+      const res = await E.executar(S.files, refs, S.cfg, p, m => log(m), (k, f) => { const [a, b] = pesos[k]; setBar(a + (b - a) * f); $('runStatus').textContent = 'Lendo ' + ({ estoque: 'Posição de Estoque', vendas: 'Base Margem', compras: 'Compras' })[k] + '… ' + Math.round(f * 100) + '%'; });
+      $('runStatus').textContent = 'Gerando o xlsx…'; await nextFrame();
+      S.lastRun = { res, refs, p };
+      const bytes = E.gerarXlsx(res, Object.assign({}, refs, { anotacoes: anotMap() }), p);
+      S.lastXlsx = { bytes, nome: 'Critico_estoque_' + p.data.slice(8, 10) + '_' + p.data.slice(5, 7) + '.xlsx', data: p.data };
+      setBar(1);
+      const snap = { v: 1, data: p.data, nome: p.nomeAba, fonte: 'pagina', params: { diasAlvo: p.diasAlvo, mesVendas: p.mesVendas, comprasDe: p.comprasDe, comprasAte: p.comprasAte, anteriorNome: anterior ? anterior.nome : null }, linhas: res.linhas.map(r => KEYS.map(k => r[k])), compras: res.compras };
+      log('Crítico pronto em ' + ((performance.now() - t0) / 1000).toFixed(0) + ' s: ' + fmtI.format(res.linhas.length) + ' linhas.', 'ok');
+      showSnapshot(snap, true);
+      $('runStatus').textContent = 'Pronto. Salvando…';
+      try { await salvarExecucao(snap, res.linhas.length, totais(snap)); $('runStatus').textContent = 'Pronto e salvo.'; }
+      catch (err) { log('O crítico foi gerado, mas não consegui salvá-lo na página: ' + (err.message || err.code || err), 'err'); $('runStatus').textContent = 'Pronto (não salvo).'; }
+    } catch (err) {
+      console.error(err); log(err.message || String(err), 'err'); $('runStatus').textContent = 'Parou com erro. Veja a mensagem acima.';
+    }
+    S.running = false; updateRunState(true);
+  }
+  async function salvarExecucao(snap, n, tot) {
+    const id = snap.data;
+    S.local[id] = { nome: snap.nome, rows: snap.anterior || snap.linhas.map(l => [l[0], l[4], l[5], l[6], l[7], l[8], l[9], l[10]]) };
+    const old = S.execucoes.find(x => x.id === id);
+    let assetId = null;
+    if (S.assets && S.db) {
+      assetId = await uploadJson(snap);
+      await S.db.doc('execucoes/' + id).set({ data: snap.data, nome: snap.nome, fonte: snap.fonte, assetId, linhas: n, totais: tot || null, completo: !!snap.linhas, criadoEm: new Date().toISOString() });
+      if (old && old.assetId && old.assetId !== assetId) { try { await S.assets.delete(old.assetId); } catch (e) { } }
+      S.execucoes = await loadExecucoes();
+      for (const x of S.execucoes.slice(20)) { try { await S.assets.delete(x.assetId); await S.db.doc('execucoes/' + x.id).delete(); } catch (e) { } }
+      S.execucoes = S.execucoes.slice(0, 20);
+    } else {
+      S.execucoes = [{ id, data: snap.data, nome: snap.nome, fonte: snap.fonte, completo: !!snap.linhas, linhas: n }].concat(S.execucoes.filter(x => x.id !== id));
+      S.localSnaps = S.localSnaps || {}; S.localSnaps[id] = snap;
+      throw new Error('o armazenamento da página não está disponível nesta visualização');
+    }
+    renderRefs(); renderHistory();
+  }
+
+  // ---------- visualização ----------
+  function totais(snap) {
+    const L = snap.linhas; const ix = k => KEYS.indexOf(k);
+    const iI = ix('I'), iJ = ix('J'), iN = ix('N'), iO = ix('O'), iV = ix('V'), iAH = ix('AH');
+    const W = (snap.params && snap.params.diasAlvo) || 30;
+    let I = 0, J = 0, N = 0, V = 0, AH = 0, crit = 0, critR = 0;
+    for (const r of L) { I += r[iI]; J += r[iJ]; N += r[iN]; if (r[iV] > 0) V += r[iV]; AH += r[iAH]; if (r[iI] > 0 && r[iO] > W) { crit++; critR += r[iV]; } }
+    return { I, J, N, V, AH, crit, critR, dias: N ? I / N * 30 : null, n: L.length };
+  }
+  function showSnapshot(snap, fresh) {
+    S.viewData = snap; S.view = snap.data;
+    const ix = k => KEYS.indexOf(k);
+    S.rows = snap.linhas || [];
+    const t = totais(snap);
+    $('hRes').textContent = snap.nome;
+    $('resEyebrow').textContent = fresh ? 'Acabou de ser gerado' : (snap.fonte === 'planilha' ? 'Importado da planilha' : 'Salvo na página');
+    $('subtitle').textContent = 'Crítico de ' + brDate(snap.data) + (snap.params && snap.params.mesVendas ? ' · vendas de ' + snap.params.mesVendas.split('-').reverse().join('/') : '') + (snap.params && snap.params.comprasDe ? ' · compras de ' + brDate(snap.params.comprasDe) + ' a ' + brDate(snap.params.comprasAte) : '');
+    const W = (snap.params && snap.params.diasAlvo) || 30;
+    const tiles = [
+      ['Itens acima de ' + W + ' dias', fmtI.format(t.crit), 'de ' + fmtI.format(t.n) + ' itens loja × produto'],
+      ['Estoque físico', fmtI.format(t.I) + ' un', fmtRk(t.J) + ' a preço de tabela'],
+      ['Dias de estoque (rede)', t.dias == null ? '—' : fmtI.format(t.dias), 'físico ÷ vendas c/ eventos × 30'],
+      ['Venda necessária', fmtRk(t.V), 'R$ acima do estoque máximo (itens com excesso)'],
+      t.AH ? ['Vs. crítico anterior', (t.J - t.AH >= 0 ? '+' : '−') + fmtRk(Math.abs(t.J - t.AH)), 'R$ Tabela hoje vs. ' + (snap.params && snap.params.anteriorNome ? snap.params.anteriorNome.replace('Criticos_estoque_em', '').trim() : 'anterior') + ' (' + fmtRk(t.AH) + ')']
+           : ['Vs. crítico anterior', '—', 'sem crítico anterior nesta execução']
+    ];
+    $('tiles').innerHTML = tiles.map(([a, b, c]) => `<div class="tile"><span class="eyebrow">${a}</span><span class="v">${b}</span><span class="s">${c}</span></div>`).join('');
+    // filtros
+    const uniq = k => [...new Set(S.rows.map(r => r[ix(k)]).filter(v => v != null && v !== ''))].map(String).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    fillSel('fl-reg', uniq('B'), 'Todas'); fillSel('fl-loja', uniq('E'), 'Todas'); fillSel('fl-grupo', uniq('G').map(s => s.trim()).filter((v, i, a) => a.indexOf(v) === i), 'Todos');
+    $('btnDown').disabled = !S.rows.length; $('btnExport').disabled = !S.rows.length; $('btnExport2').disabled = !S.rows.length;
+    S.sort = { k: 'J', dir: -1 }; // sempre classificado por R$ Tabela, do maior para o menor
+    S.shown = 200; renderTable(); renderHistory();
+  }
+  function fillSel(id, vals, all) { const sel = $(id); const cur = sel.value; sel.innerHTML = `<option value="">${all}</option>` + vals.map(v => `<option>${esc(v)}</option>`).join(''); if (vals.includes(cur)) sel.value = cur; }
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const COLS = [
+    ['B', 'Regional', 'l'], ['D', 'Top 20', 'l'], ['E', 'Loja', 'l'], ['F', 'Código', 'l'], ['H', 'Descrição', 'l desc'],
+    ['I', 'Físico'], ['J', 'R$ Tabela', 'rs'], ['L', 'Vendas s/ ev.'], ['N', 'Vendas c/ ev.'], ['O', 'Dias estoque', 'dias'],
+    ['P', 'Compras R$', 'rs'], ['Q', 'Boni R$', 'rs'], ['R', 'Est. máx (un)'], ['T', 'Venda nec. (un)'], ['U', 'Venda nec. (pack)'], ['V', 'Venda nec. R$', 'rs'],
+    ['W', 'Ação', 'note'], ['X', 'Observação', 'note'], ['Y', 'Dono ação', 'note'], ['Z', 'Data da ação', 'note'],
+    ['AD', 'Execução (un)'], ['AF', 'Dias execução', 'd1'], ['AG', 'Est. anterior (un)'], ['AI', 'Dif R$', 'rs']
+  ];
+  // ---------- ordem das colunas ----------
+  const COL_DEF = COLS.map(c => c[0]);
+  let colOrder = COL_DEF.slice(), colOff = new Set();
+  function applyColPrefs(pref) {
+    if (!pref) return;
+    const known = new Set(COL_DEF);
+    const ord = (pref.ordem || []).filter(k => known.has(k));
+    colOrder = ord.slice();
+    COL_DEF.forEach((k, i) => { if (colOrder.includes(k)) return; const prev = i ? colOrder.indexOf(COL_DEF[i - 1]) : -1; colOrder.splice(prev + 1, 0, k); });
+    colOff = new Set((pref.ocultas || []).filter(k => known.has(k)));
+  }
+  try { applyColPrefs(JSON.parse(localStorage.getItem('critico.colunas') || 'null')); } catch (e) { }
+  function visibleCols() { return colOrder.filter(k => !colOff.has(k)).map(k => COLS.find(c => c[0] === k)); }
+  let colSaveT;
+  function saveColPrefs() {
+    const pref = { ordem: colOrder, ocultas: [...colOff] };
+    try { localStorage.setItem('critico.colunas', JSON.stringify(pref)); } catch (e) { }
+    clearTimeout(colSaveT);
+    colSaveT = setTimeout(() => { if (S.db) saveEstado({ colunas: pref }).catch(() => { }); }, 800);
+  }
+  function moveCol(k, target, after) {
+    if (k === target) return;
+    const o = colOrder.filter(x => x !== k);
+    let i = o.indexOf(target); if (i < 0) return;
+    if (after) i++;
+    o.splice(i, 0, k); colOrder = o;
+    saveColPrefs(); renderColList(); renderTable();
+  }
+  function renderColList() {
+    $('colList').innerHTML = colOrder.map((k, i) => {
+      const c = COLS.find(x => x[0] === k);
+      return `<li draggable="true" data-k="${k}" class="${colOff.has(k) ? 'off' : ''}"><input type="checkbox" id="colchk-${k}" data-k="${k}" ${colOff.has(k) ? '' : 'checked'} aria-label="Mostrar ${esc(c[1])}"><label class="nm" for="colchk-${k}">${esc(c[1])}</label>` +
+        `<button class="small" data-mv="-1" data-k="${k}" ${i === 0 ? 'disabled' : ''} aria-label="Mover ${esc(c[1])} para a esquerda">←</button><button class="small" data-mv="1" data-k="${k}" ${i === colOrder.length - 1 ? 'disabled' : ''} aria-label="Mover ${esc(c[1])} para a direita">→</button></li>`;
+    }).join('');
+  }
+  function wireDrag(container, itemSel, horizontal) {
+    let dragK = null;
+    const clear = () => container.querySelectorAll('.drop-before,.drop-after,.dragging').forEach(x => x.classList.remove('drop-before', 'drop-after', 'dragging'));
+    container.addEventListener('dragstart', e => { const it = e.target.closest(itemSel); if (!it) return; dragK = it.dataset.k; it.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', dragK); } catch (er) { } });
+    container.addEventListener('dragover', e => {
+      const it = e.target.closest(itemSel); if (!it || !dragK) return; e.preventDefault();
+      const r = it.getBoundingClientRect(); const after = horizontal ? e.clientX > r.left + r.width / 2 : false;
+      container.querySelectorAll('.drop-before,.drop-after').forEach(x => x.classList.remove('drop-before', 'drop-after'));
+      it.classList.add(after ? 'drop-after' : 'drop-before');
+    });
+    container.addEventListener('drop', e => {
+      const it = e.target.closest(itemSel); if (!it || !dragK) return; e.preventDefault();
+      const after = it.classList.contains('drop-after'); const k = dragK; dragK = null; clear(); moveCol(k, it.dataset.k, after);
+    });
+    container.addEventListener('dragend', () => { dragK = null; clear(); });
+  }
+
+  // ---------- anotações ----------
+  const NOTE_F = { W: 'acao', X: 'obs', Y: 'dono', Z: 'data' };
+  const akey = (loja, cod) => String(loja) + '\u0001' + String(cod);
+  const slug = (loja, cod) => (String(loja).normalize('NFD').replace(/\p{M}/gu, '').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '') + '__' + String(cod).replace(/[^A-Za-z0-9]/g, '')).slice(0, 180);
+  const ativa = a => a && a.status !== 'arquivada';
+  function anotDe(r) { const a = S.anot.get(akey(r[KEYS.indexOf('E')], r[KEYS.indexOf('F')])); return ativa(a) ? a : null; }
+  function val(r, k) { if (NOTE_F[k]) { const a = anotDe(r); return a ? (a[NOTE_F[k]] || '') : ''; } return r[KEYS.indexOf(k)]; }
+  function anotMap() { const m = new Map(); for (const [k, a] of S.anot) if (ativa(a)) m.set(k, a); return m; }
+  async function saveAnot(loja, cod, desc, patch) {
+    const k = akey(loja, cod); const old = S.anot.get(k);
+    const hoje = new Date().toISOString();
+    const base = old ? Object.assign({}, old) : { loja: String(loja), codigo: String(cod), descricao: String(desc || '').trim(), acao: '', obs: '', dono: '', data: '', status: 'aberta', historico: [] };
+    const changed = Object.keys(patch).some(f => (base[f] || '') !== (patch[f] || ''));
+    if (!changed) return;
+    if (old && old.atualizadoEm && old.atualizadoEm.slice(0, 10) !== hoje.slice(0, 10) && (old.acao || old.obs || old.dono || old.data)) {
+      base.historico = (old.historico || []).concat([{ acao: old.acao || '', obs: old.obs || '', dono: old.dono || '', data: old.data || '', em: old.atualizadoEm.slice(0, 10), status: old.status || 'aberta' }]).slice(-10);
+    }
+    Object.assign(base, patch, { atualizadoEm: hoje });
+    if (!old && !base.acao && !base.obs && !base.dono && !base.data) return;
+    delete base._id;
+    S.anot.set(k, Object.assign({ _id: slug(loja, cod) }, base));
+    if (!S.db) throw new Error('Sem acesso ao banco. Entre no site de novo.');
+    await S.db.doc('anotacoes/' + slug(loja, cod)).set(base);
+  }
+  async function loadAnot() {
+    S.anot = new Map();
+    if (!S.db) return;
+    const snap = await S.db.collection('anotacoes').limit(1000).get();
+    for (const d of snap.docs) { const a = d.data(); S.anot.set(akey(a.loja, a.codigo), Object.assign({ _id: d.id }, a)); }
+    const p = await S.db.doc('reuniao/pontos').get();
+    S.pontos = p.exists ? (p.data().itens || []) : [];
+  }
+  function fillDatalists() {
+    const acoes = new Set(), donos = new Set();
+    if (S.depara) { for (let i = 2; i < 12 && i < S.depara.length; i++) { const r = S.depara[i] || []; if (r[9]) acoes.add(String(r[9])); if (r[11]) donos.add(String(r[11])); } }
+    for (const a of S.anot.values()) { if (a.acao) acoes.add(a.acao); if (a.dono) donos.add(a.dono); }
+    $('dl-acao').innerHTML = [...acoes].sort((a, b) => a.localeCompare(b, 'pt-BR')).map(v => `<option value="${esc(v)}">`).join('');
+    $('dl-dono').innerHTML = [...donos].sort((a, b) => a.localeCompare(b, 'pt-BR')).map(v => `<option value="${esc(v)}">`).join('');
+  }
+  const noteTxt = (f, v) => f === 'data' && /^\d{4}-\d{2}-\d{2}$/.test(v || '') ? brDate(v) : (v || '');
+  function noteTd(f, v, attrs) { return `<td class="note${v ? '' : ' empty'}" data-f="${f}" ${attrs} tabindex="0">${esc(noteTxt(f, v))}</td>`; }
+  // editor de célula: td precisa de data-f, data-loja, data-cod, data-desc
+  function startEdit(td) {
+    if (td.querySelector('input')) return;
+    const f = td.dataset.f; const loja = td.dataset.loja, cod = td.dataset.cod;
+    const cur = (S.anot.get(akey(loja, cod)) || {})[f] || '';
+    const inp = document.createElement('input');
+    if (f === 'data') inp.type = 'date'; else { inp.type = 'text'; if (f === 'acao') inp.setAttribute('list', 'dl-acao'); if (f === 'dono') inp.setAttribute('list', 'dl-dono'); }
+    inp.value = cur; td.textContent = ''; td.classList.remove('empty'); td.appendChild(inp); inp.focus(); if (inp.select && inp.type === 'text') inp.select();
+    let done = false;
+    const finish = async save => {
+      if (done) return; done = true;
+      const v = inp.value.trim();
+      if (save && v !== cur) {
+        td.classList.add('saving'); td.textContent = noteTxt(f, v);
+        try { await saveAnot(loja, cod, td.dataset.desc, { [f]: v }); } catch (e) { log('Não consegui salvar a anotação: ' + (e.message || e.code), 'err'); }
+        td.classList.remove('saving');
+        fillDatalists(); renderNotes(); if (!td.closest('#tbl')) return; renderTable();
+      } else { td.textContent = noteTxt(f, cur); td.classList.toggle('empty', !cur); }
+    };
+    inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); finish(true); } else if (e.key === 'Escape') finish(false); });
+    inp.addEventListener('blur', () => finish(true));
+    if (inp.type === 'date') inp.addEventListener('change', () => finish(true));
+  }
+  function renderNotes() {
+    const arq = $('nt-arq').checked, lj = $('nt-loja').value, dn = $('nt-dono').value;
+    const all = [...S.anot.values()];
+    fillSel('nt-loja', [...new Set(all.map(a => a.loja))].sort((a, b) => a.localeCompare(b, 'pt-BR')), 'Todas');
+    fillSel('nt-dono', [...new Set(all.map(a => a.dono).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR')), 'Todos');
+    const list = all.filter(a => (arq || ativa(a)) && (!lj || a.loja === lj) && (!dn || a.dono === dn))
+      .sort((a, b) => (ativa(b) - ativa(a)) || a.loja.localeCompare(b.loja, 'pt-BR') || a.codigo.localeCompare(b.codigo));
+    const nAb = all.filter(ativa).length;
+    $('notesInfo').textContent = `${nAb} anotações abertas${all.length - nAb ? ' · ' + (all.length - nAb) + ' arquivadas' : ''}. Ficam salvas e passam de um crítico para o outro.`;
+    $('notesTbl').tHead.innerHTML = '<tr><th class="l">Loja</th><th class="l">Código</th><th class="l">Descrição</th><th class="l">Ação</th><th class="l">Observação</th><th class="l">Dono</th><th class="l">Data da ação</th><th class="l">Atualizada</th><th></th></tr>';
+    $('notesTbl').tBodies[0].innerHTML = list.length ? list.map(a => {
+      const at = `data-loja="${esc(a.loja)}" data-cod="${esc(a.codigo)}" data-desc="${esc(a.descricao || '')}"`;
+      const hist = (a.historico || []).map(h => `${brDate(h.em)}: ${[h.acao, h.obs, h.dono].filter(Boolean).join(' · ')}`).join('\n');
+      return `<tr style="${ativa(a) ? '' : 'opacity:.6'}"><td class="l">${esc(a.loja)}</td><td class="l">${esc(a.codigo)}</td><td class="l desc" title="${esc(a.descricao || '')}">${esc(a.descricao || '')}</td>` +
+        noteTd('acao', a.acao, at) + noteTd('obs', a.obs, at) + noteTd('dono', a.dono, at) + noteTd('data', a.data, at) +
+        `<td class="l" title="${esc(hist ? 'Histórico:\n' + hist : 'Sem histórico')}">${brDate((a.atualizadoEm || '').slice(0, 10))}${hist ? ' · ' + (a.historico.length) + ' ant.' : ''}</td>` +
+        `<td><button class="small" data-arq="${ativa(a) ? 1 : 0}" ${at}>${ativa(a) ? 'Arquivar' : 'Reabrir'}</button></td></tr>`;
+    }).join('') : `<tr><td class="l" colspan="9">${all.length ? 'Nenhuma anotação com esses filtros.' : 'Nenhuma anotação ainda.'}</td></tr>`;
+  }
+  function renderPontos() {
+    $('pontos').innerHTML = (S.pontos || []).map((p, i) => `<li><span class="txt" data-i="${i}" tabindex="0" title="Clique para editar">${esc(p.texto)}</span><button class="small" data-del="${i}" aria-label="Remover ponto">Remover</button></li>`).join('') || '<li class="muted">Nenhum ponto anotado.</li>';
+  }
+  async function savePontos() {
+    try { if (!S.db) throw new Error('armazenamento indisponível'); await S.db.doc('reuniao/pontos').set({ itens: S.pontos, atualizadoEm: new Date().toISOString() }); }
+    catch (e) { log('Não consegui salvar os pontos: ' + (e.message || e.code), 'err'); }
+    renderPontos();
+  }
+
+  function filtered() {
+    const ix = k => KEYS.indexOf(k);
+    const reg = $('fl-reg').value, loja = $('fl-loja').value, grupo = $('fl-grupo').value, q = $('fl-q').value.trim().toUpperCase();
+    const top = $('fl-top').checked, crit = $('fl-crit').checked, soAnot = $('fl-anot').checked;
+    const W = (S.viewData && S.viewData.params && S.viewData.params.diasAlvo) || 30;
+    const iB = ix('B'), iE = ix('E'), iG = ix('G'), iF = ix('F'), iH = ix('H'), iD = ix('D'), iO = ix('O'), iI = ix('I');
+    let out = S.rows.filter(r => (!reg || String(r[iB]) === reg) && (!loja || r[iE] === loja) && (!grupo || String(r[iG]).trim() === grupo) &&
+      (!top || String(r[iD]).toUpperCase() === 'OK') && (!crit || (r[iI] > 0 && r[iO] > W)) &&
+      (!q || String(r[iF]).includes(q) || String(r[iH]).toUpperCase().includes(q)) && (!soAnot || anotDe(r)));
+    const sk = S.sort.k, d = S.sort.dir;
+    out.sort((a, b) => { const x = val(a, sk), y = val(b, sk); if (typeof x === 'number' && typeof y === 'number') return (x - y) * d; return String(x).localeCompare(String(y), 'pt-BR') * d; });
+    return out;
+  }
+  function renderTable() {
+    const ix = k => KEYS.indexOf(k);
+    const W = (S.viewData && S.viewData.params && S.viewData.params.diasAlvo) || 30;
+    const VC = visibleCols();
+    $('tbl').tHead.innerHTML = '<tr>' + VC.map(([k, t, c]) => `<th class="${c && (c.startsWith('l') || c === 'note') ? 'l' : ''}" data-k="${k}" draggable="true" title="Clique para ordenar, arraste para mover" ${S.sort.k === k ? `aria-sort="${S.sort.dir < 0 ? 'descending' : 'ascending'}"` : ''} scope="col">${t}</th>`).join('') + '</tr>';
+    const rows = filtered(); const shown = rows.slice(0, S.shown);
+    const cell = (r, [k, , c]) => {
+      if (c === 'note') return noteTd(NOTE_F[k], val(r, k), `data-loja="${esc(r[ix('E')])}" data-cod="${esc(r[ix('F')])}" data-desc="${esc(String(r[ix('H')] || '').trim())}"`);
+      const v = r[ix(k)];
+      if (k === 'D') return `<td class="l">${String(v).toUpperCase() === 'OK' ? '<span class="pill top">Top 20</span>' : ''}</td>`;
+      if (c && c.startsWith('l')) return `<td class="${c}" title="${esc(v == null ? '' : String(v).trim())}">${esc(v == null ? '' : String(v).trim())}</td>`;
+      if (typeof v !== 'number') return `<td>${esc(v == null ? '' : v)}</td>`;
+      if (c === 'rs') return `<td class="${v < 0 ? 'neg' : ''}">${fmtR.format(v)}</td>`;
+      if (c === 'dias') return `<td class="${v > W ? 'days-hi' : 'days-ok'}">${v >= 9999 ? 'sem venda' : fmtI.format(v)}</td>`;
+      if (c === 'd1') return `<td>${fmt1.format(v)}</td>`;
+      return `<td class="${v < 0 ? 'neg' : ''}">${fmtI.format(v)}</td>`;
+    };
+    $('tbl').tBodies[0].innerHTML = shown.length ? shown.map(r => '<tr>' + VC.map(c => cell(r, c)).join('') + '</tr>').join('') : `<tr><td class="l" colspan="${VC.length}">${S.rows.length ? 'Nenhum item com esses filtros.' : 'Execute o crítico ou escolha um crítico salvo.'}</td></tr>`;
+    let sumV = 0; const iV = ix('V'); for (const r of rows) if (r[iV] > 0) sumV += r[iV];
+    $('countInfo').textContent = rows.length ? `${fmtI.format(Math.min(S.shown, rows.length))} de ${fmtI.format(rows.length)} itens · venda necessária ${fmtR.format(sumV)}` : '';
+    $('btnMore').hidden = rows.length <= S.shown;
+  }
+  function renderHistory() {
+    const h = $('history');
+    h.innerHTML = S.execucoes.filter(x => x.completo).slice(0, 6).map(x => `<button class="small" data-id="${x.id}" aria-pressed="${x.id === S.view}">${brDate(x.data).slice(0, 5)}</button>`).join('');
+  }
+  async function openExecucao(id) {
+    const ex = S.execucoes.find(x => x.id === id); if (!ex) return;
+    try {
+      const snap = (S.localSnaps && S.localSnaps[id]) || await fetchAsset(ex.assetId);
+      S.lastXlsx = null; showSnapshot(snap, false);
+    } catch (e) { log(e.message || String(e), 'err'); }
+  }
+  async function download() {
+    const btn = $('btnDown'); btn.disabled = true; const old = btn.textContent; btn.textContent = 'Gerando…'; await nextFrame();
+    try {
+      let x = null;
+      if (S.lastRun && S.lastRun.p.data === S.view) {
+        const L = S.lastRun;
+        x = { bytes: E.gerarXlsx(L.res, Object.assign({}, L.refs, { anotacoes: anotMap() }), L.p), nome: S.lastXlsx.nome, data: L.p.data };
+      } else {
+        const snap = S.viewData; const ix = k => KEYS.indexOf(k);
+        const linhas = snap.linhas.map(a => { const o = {}; KEYS.forEach((k, i) => o[k] = a[i]); return o; });
+        const p = Object.assign({ diasAlvo: 30, ocultarColunas: true, comprasDe: snap.data, comprasAte: snap.data, fornecedoresResumo: S.cfg.comprasFornecedores.join('; ') }, snap.params, { nomeAba: snap.nome });
+        const bytes = E.gerarXlsx({ linhas, compras: snap.compras || { compra: [], boni: [] } }, { depara: S.depara || [], top20: S.top20 || { rows: [] }, anterior: null, anotacoes: anotMap() }, p);
+        x = { bytes, nome: 'Critico_estoque_' + snap.data.slice(8, 10) + '_' + snap.data.slice(5, 7) + '.xlsx', data: snap.data };
+      }
+      if (!S.downloads) throw new Error('O download não está disponível. Entre no site de novo.');
+      await S.downloads.save({ filename: x.nome, data: new Blob([x.bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }) });
+    } catch (e) { if (!e || e.code !== 'declined') log((e && (e.message || e.code)) || String(e), 'err'); }
+    btn.textContent = old; btn.disabled = false;
+  }
+
+  async function exportView(btn) {
+    btn.disabled = true; const old = btn.textContent; btn.textContent = 'Gerando…'; await nextFrame();
+    try {
+      if (!S.downloads) throw new Error('O download não está disponível. Entre no site de novo.');
+      const ix = k => KEYS.indexOf(k);
+      const VC = visibleCols(); const rows = filtered();
+      const W = { B: 18, D: 9, E: 22, F: 10, H: 42, J: 15, P: 14, Q: 13, V: 16, AI: 14 };
+      const cols = VC.map(([k, t, c]) => ({ t, w: W[k] || (c === 'note' ? 24 : 13), s: c && c.startsWith('l') || c === 'note' ? 'txtL' : c === 'rs' ? 'rs2' : (c === 'dias' || c === 'd1') ? 'dec1' : 'int' }));
+      const linhas = rows.map(r => VC.map(([k, , c]) => { const v = c === 'note' ? (k === 'Z' ? noteTxt('data', val(r, k)) : val(r, k)) : r[ix(k)]; if (c === 'dias' && v >= 9999) return 'sem venda'; if (typeof v === 'string') return v.trim(); return v; }));
+      const f = [];
+      if ($('fl-reg').value) f.push('Regional: ' + $('fl-reg').value);
+      if ($('fl-loja').value) f.push('Loja: ' + $('fl-loja').value);
+      if ($('fl-grupo').value) f.push('Grupo: ' + $('fl-grupo').value);
+      if ($('fl-q').value.trim()) f.push('Busca: ' + $('fl-q').value.trim());
+      if ($('fl-top').checked) f.push('Só Top 20');
+      if ($('fl-anot').checked) f.push('Só com anotação');
+      if ($('fl-crit').checked) f.push('Só acima de ' + ((S.viewData.params && S.viewData.params.diasAlvo) || 30) + ' dias');
+      const snap = S.viewData;
+      const titulo = snap.nome + ' · ' + fmtI.format(rows.length) + ' itens' + (f.length ? ' · ' + f.join(' · ') : ' · sem filtros');
+      const bytes = E.gerarXlsxTabela('Critico ' + snap.data.slice(8, 10) + '_' + snap.data.slice(5, 7), titulo, cols, linhas);
+      await S.downloads.save({ filename: 'Critico_visao_' + snap.data.slice(8, 10) + '_' + snap.data.slice(5, 7) + '.xlsx', data: new Blob([bytes]) });
+    } catch (e) { if (!e || e.code !== 'declined') log((e && (e.message || e.code)) || String(e), 'err'); }
+    btn.textContent = old; btn.disabled = false;
+  }
+
+  // ---------- regras ----------
+  const RULES = [
+    ['estoqueGruposExcluidos', 'Estoque: grupos excluídos'], ['estoqueLojasExcluidas', 'Estoque: lojas excluídas'],
+    ['vendasSegSemEventos', 'Vendas s/ eventos: segmentações'], ['vendasSegComEventos', 'Vendas c/ eventos: segmentações'],
+    ['vendasEF', 'Vendas: EF (tipo de documento)'], ['vendasAcoesExcluidas', 'Vendas: ações excluídas'],
+    ['comprasFornecedores', 'Compras e Boni: fornecedores (NOME)'], ['comprasCFOP', 'Compras: Descrição CFOP'],
+    ['comprasOperacoesExcluidas', 'Compras: operações excluídas'], ['comprasOperacoesBoni', 'Boni: operações']
+  ];
+  function renderRules() {
+    $('rulesGrid').innerHTML = RULES.map(([k, t]) => `<div class="field"><label for="rule-${k}">${t}</label><textarea id="rule-${k}">${esc(S.cfg[k].join('\n'))}</textarea></div>`).join('') +
+      `<div class="field"><label for="rule-acaoVazia">Vendas c/ eventos: ignorar linhas sem Ação</label><select id="rule-acaoVazia"><option value="1">Sim (como na dinâmica)</option><option value="0">Não</option></select></div>`;
+    $('rule-acaoVazia').value = S.cfg.vendasComEventosExcluiAcaoVazia ? '1' : '0';
+  }
+  async function saveRules() {
+    for (const [k] of RULES) S.cfg[k] = $('rule-' + k).value.split('\n').map(s => s.trim()).filter(Boolean);
+    S.cfg.vendasComEventosExcluiAcaoVazia = $('rule-acaoVazia').value === '1';
+    try { await saveEstado({ cfg: S.cfg }); $('rulesStatus').textContent = 'Regras salvas.'; } catch (e) { $('rulesStatus').textContent = 'Não consegui salvar: ' + (e.message || e.code); }
+  }
+
+  // ---------- eventos ----------
+  for (const k of ['estoque', 'vendas', 'compras']) {
+    const inp = $('f-' + k), drop = $('drop-' + k);
+    $('fn-' + k).dataset.def = $('fn-' + k).textContent;
+    inp.addEventListener('change', () => setFile(k, inp.files[0] || null));
+    drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('over'); });
+    drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+    drop.addEventListener('drop', () => drop.classList.remove('over'));
+  }
+  $('r-depara').addEventListener('change', e => e.target.files[0] && trocarRef(e.target.files[0], 'depara'));
+  $('r-top20').addEventListener('change', e => e.target.files[0] && trocarRef(e.target.files[0], 'top20'));
+  $('r-all').addEventListener('change', e => e.target.files[0] && trocarRef(e.target.files[0], 'all'));
+  $('btnBackup').addEventListener('click', baixarBackup);
+  $('r-backup').addEventListener('change', e => { const f = e.target.files[0]; e.target.value = ''; if (f) restaurarBackup(f); });
+  $('btnRun').addEventListener('click', run);
+  $('btnDown').addEventListener('click', download);
+  $('btnExport').addEventListener('click', e => exportView(e.currentTarget));
+  $('btnExport2').addEventListener('click', e => exportView(e.currentTarget));
+  $('btnMore').addEventListener('click', () => { S.shown += 200; renderTable(); });
+  ['fl-anot'].forEach(id => $(id).addEventListener('change', () => { S.shown = 200; renderTable(); }));
+  ['nt-loja', 'nt-dono', 'nt-arq'].forEach(id => $(id).addEventListener('change', renderNotes));
+  const editClick = e => { const td = e.target.closest('td.note'); if (td && !e.target.closest('input')) startEdit(td); };
+  $('tbl').addEventListener('click', editClick, true);
+  $('notesTbl').addEventListener('click', editClick);
+  for (const id of ['tbl', 'notesTbl']) $(id).addEventListener('keydown', e => { const td = e.target.closest && e.target.closest('td.note'); if (td && e.target === td && (e.key === 'Enter' || e.key === 'F2')) { e.preventDefault(); startEdit(td); } });
+  $('notesTbl').addEventListener('click', async e => {
+    const b = e.target.closest('button[data-arq]'); if (!b) return;
+    b.disabled = true;
+    try { await saveAnot(b.dataset.loja, b.dataset.cod, b.dataset.desc, { status: b.dataset.arq === '1' ? 'arquivada' : 'aberta' }); } catch (er) { log('Não consegui salvar: ' + (er.message || er.code), 'err'); }
+    renderNotes(); renderTable();
+  });
+  $('btnPonto').addEventListener('click', () => { const t = $('pontoNovo').value.trim(); if (!t) return; S.pontos = (S.pontos || []).concat([{ texto: t, criadoEm: new Date().toISOString() }]); $('pontoNovo').value = ''; savePontos(); });
+  $('pontos').addEventListener('click', e => {
+    const del = e.target.closest('button[data-del]');
+    if (del) { const i = +del.dataset.del; if (del.dataset.confirm) { S.pontos.splice(i, 1); savePontos(); } else { del.dataset.confirm = '1'; del.textContent = 'Confirmar'; } return; }
+    const sp = e.target.closest('span.txt'); if (!sp) return;
+    const i = +sp.dataset.i; const ta = document.createElement('textarea'); ta.value = S.pontos[i].texto; sp.replaceWith(ta); ta.focus();
+    let done = false;
+    const fin = save => { if (done) return; done = true; const v = ta.value.trim(); if (save && v && v !== S.pontos[i].texto) { S.pontos[i] = Object.assign({}, S.pontos[i], { texto: v, editadoEm: new Date().toISOString() }); savePontos(); } else renderPontos(); };
+    ta.addEventListener('blur', () => fin(true)); ta.addEventListener('keydown', ev => { if (ev.key === 'Escape') fin(false); if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) fin(true); });
+  });
+  ['fl-reg', 'fl-loja', 'fl-grupo', 'fl-top', 'fl-crit'].forEach(id => $(id).addEventListener('change', () => { S.shown = 200; renderTable(); }));
+  let qt; $('fl-q').addEventListener('input', () => { clearTimeout(qt); qt = setTimeout(() => { S.shown = 200; renderTable(); }, 200); });
+  $('tbl').addEventListener('click', e => { const th = e.target.closest('th'); if (!th) return; const k = th.dataset.k; S.sort = { k, dir: S.sort.k === k ? -S.sort.dir : -1 }; renderTable(); });
+  wireDrag($('tbl'), 'th', true);
+  wireDrag($('colList'), 'li', false);
+  $('colList').addEventListener('change', e => { const k = e.target.dataset.k; if (!k) return; if (e.target.checked) colOff.delete(k); else colOff.add(k); saveColPrefs(); renderColList(); renderTable(); });
+  $('colList').addEventListener('click', e => { const b = e.target.closest('button[data-mv]'); if (!b) return; const k = b.dataset.k, i = colOrder.indexOf(k), j = i + (+b.dataset.mv); if (j < 0 || j >= colOrder.length) return; moveCol(k, colOrder[j], +b.dataset.mv > 0); });
+  $('btnColReset').addEventListener('click', () => { colOrder = COL_DEF.slice(); colOff = new Set(); saveColPrefs(); renderColList(); renderTable(); });
+  $('history').addEventListener('click', e => { const b = e.target.closest('button'); if (b) openExecucao(b.dataset.id); });
+  $('p-data').addEventListener('change', () => { const d = $('p-data').value; if (!d) return; $('p-mes').value = prevMonth(d); $('p-de').value = addDays(d, -6); $('p-ate').value = addDays(d, -2); renderAntSelect(); });
+  $('btnSaveRules').addEventListener('click', saveRules);
+  $('btnResetRules').addEventListener('click', () => { S.cfg = JSON.parse(JSON.stringify(E.DEFAULT_CFG)); renderRules(); $('rulesStatus').textContent = 'Padrão restaurado. Clique em Salvar regras para manter.'; });
+
+  // ---------- início ----------
+  (function initParams() { const d = isoToday(); $('p-data').value = d; $('p-mes').value = prevMonth(d); $('p-de').value = addDays(d, -6); $('p-ate').value = addDays(d, -2); })();
+  renderRules(); renderColList(); renderTable(); renderRefs(); renderNotes(); renderPontos();
+  // ---------- login ----------
+  async function entrar(ST) {
+    const gate = $('gate'), msg = $('gateStatus');
+    if (ST.auth.erro) { $('gateMsg').textContent = ST.auth.erro.message; $('gateForm').querySelectorAll('input,button').forEach(x => x.disabled = true); return false; }
+    $('gateForm').addEventListener('submit', async e => {
+      e.preventDefault();
+      const email = $('gateEmail').value.trim().toLowerCase();
+      $('gateBtn').disabled = true; msg.textContent = 'Enviando…';
+      try { await ST.auth.entrar(email); msg.textContent = 'Pronto. Abra o e-mail que mandamos para ' + email + ' e clique no link.'; }
+      catch (err) { msg.textContent = 'Não consegui enviar o link: ' + err.message; }
+      $('gateBtn').disabled = false;
+    });
+    let sessao = await ST.auth.sessao();
+    if (!sessao) {
+      await new Promise(res => ST.auth.aoMudar((ev, s) => { if (s && !sessao) { sessao = s; res(); } }));
+    }
+    const email = sessao.user.email;
+    let papel = null;
+    try { papel = await ST.auth.papel(); } catch (err) { msg.textContent = 'Não consegui verificar o seu acesso: ' + err.message; return false; }
+    if (!papel) {
+      $('gateMsg').textContent = 'O e-mail ' + email + ' não tem acesso. Peça para incluírem você.';
+      $('gateEmail').hidden = true; $('gateBtn').textContent = 'Entrar com outro e-mail';
+      $('gateForm').addEventListener('submit', () => ST.auth.sair(), { capture: true });
+      return false;
+    }
+    gate.hidden = true; $('app').hidden = false;
+    $('userEmail').textContent = email + (papel === 'leitor' ? ' · só leitura' : '');
+    $('btnSair').addEventListener('click', () => ST.auth.sair());
+    if (location.hash.includes('access_token')) history.replaceState(null, '', location.pathname);
+    return true;
+  }
+
+  // ---------- backup ----------
+  async function baixarBackup() {
+    const st = $('backupStatus');
+    try {
+      st.textContent = 'Juntando os dados…';
+      const execucoes = [];
+      for (const ex of S.execucoes) {
+        let snapshot = null; try { snapshot = await fetchAsset(ex.assetId); } catch (e) { }
+        const doc = Object.assign({}, ex); delete doc.id; execucoes.push({ id: ex.id, doc, snapshot });
+      }
+      const an = await S.db.collection('anotacoes').limit(5000).get();
+      const pontos = await S.db.doc('reuniao/pontos').get();
+      const b = { tipo: 'estoque-critico-backup', v: 1, em: new Date().toISOString(), estado: S.estado || {}, depara: S.depara, top20: S.top20, execucoes,
+        anotacoes: an.docs.map(d => ({ id: d.id, data: d.data() })), pontos: pontos.exists ? pontos.data() : { itens: [] } };
+      await S.downloads.save({ filename: 'estoque-critico-backup-' + isoToday() + '.json', data: new Blob([JSON.stringify(b)], { type: 'application/json' }) });
+      st.textContent = 'Backup baixado.';
+    } catch (err) { st.textContent = 'Não consegui gerar o backup: ' + err.message; }
+  }
+  async function restaurarBackup(file) {
+    const st = $('backupStatus');
+    try {
+      st.textContent = 'Lendo o backup…';
+      const b = JSON.parse(await file.text());
+      if (b.tipo !== 'estoque-critico-backup') throw new Error('este arquivo não é um backup do Estoque Crítico');
+      if (!confirm('Restaurar o backup de ' + brDate((b.em || '').slice(0, 10)) + '? Referências, críticos com a mesma data, anotações e pontos serão substituídos.')) { st.textContent = ''; return; }
+      const estado = Object.assign({}, b.estado || {});
+      if (b.depara) { st.textContent = 'Salvando De-para…'; estado.depara = Object.assign({}, estado.depara, { id: await uploadJson(b.depara) }); }
+      if (b.top20) { st.textContent = 'Salvando Top 20…'; estado.top20 = Object.assign({}, estado.top20, { id: await uploadJson(b.top20) }); }
+      let n = 0;
+      for (const ex of b.execucoes || []) {
+        st.textContent = 'Salvando críticos… ' + (++n) + ' de ' + b.execucoes.length;
+        const doc = Object.assign({}, ex.doc);
+        if (ex.snapshot) doc.assetId = await uploadJson(ex.snapshot);
+        await S.db.doc('execucoes/' + ex.id).set(doc);
+      }
+      n = 0;
+      for (const a of b.anotacoes || []) { if (++n % 20 === 0) st.textContent = 'Salvando anotações… ' + n + ' de ' + b.anotacoes.length; await S.db.doc('anotacoes/' + a.id).set(a.data); }
+      if (b.pontos) await S.db.doc('reuniao/pontos').set(b.pontos);
+      S.estado = {}; await saveEstado(estado);
+      st.textContent = 'Backup restaurado. Recarregando…';
+      setTimeout(() => location.reload(), 800);
+    } catch (err) { st.textContent = 'Não consegui restaurar: ' + err.message; }
+  }
+
+  (async function boot() {
+    const ST = window.CriticoStore;
+    if (!await entrar(ST)) return;
+    [S.db, S.assets, S.downloads] = [ST.db, ST.assets, ST.downloads];
+    try {
+      const st = await S.db.doc('estado/atual').get();
+      S.estado = st.exists ? st.data() : {};
+      if (S.estado.colunas) { applyColPrefs(S.estado.colunas); renderColList(); renderTable(); }
+      if (S.estado.cfg) S.cfg = Object.assign(JSON.parse(JSON.stringify(E.DEFAULT_CFG)), S.estado.cfg);
+      renderRules();
+      try { await loadAnot(); } catch (e) { log('Não consegui ler as anotações: ' + (e.message || e.code), 'err'); }
+      S.execucoes = await loadExecucoes();
+      const jobs = [];
+      if (S.estado.depara && S.estado.depara.id) jobs.push(fetchAsset(S.estado.depara.id).then(r => { S.depara = r; }));
+      if (S.estado.top20 && S.estado.top20.id) jobs.push(fetchAsset(S.estado.top20.id).then(r => { S.top20 = r; }));
+      await Promise.all(jobs);
+      renderRefs(); fillDatalists(); renderNotes(); renderPontos();
+      const last = S.execucoes.find(x => x.completo);
+      if (last) await openExecucao(last.id);
+      else $('subtitle').textContent = 'Nenhum crítico salvo ainda.';
+    } catch (e) { console.error(e); $('subtitle').textContent = 'Não consegui ler os dados salvos: ' + (e.message || e.code); }
+  })();
+})();
+</script>
+</body>
+</html>
