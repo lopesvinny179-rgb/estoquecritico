@@ -57,20 +57,27 @@
     return api;
   }
 
+  // Os arquivos ficam como <id>.<ext> no bucket. JSON por padrão; os consolidados do mês usam .json.gz.
+  const novoId = () => Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('');
   const assets = {
     async upload(blob, opts) {
-      const id = Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('');
-      const { error } = await sb.storage.from(BUCKET).upload(id + '.json', blob, { contentType: (opts && opts.type) || 'application/json', upsert: false });
+      const id = novoId(), ext = (opts && opts.ext) || 'json';
+      const { error } = await sb.storage.from(BUCKET).upload(id + '.' + ext, blob, { contentType: (opts && opts.type) || 'application/json', upsert: false });
       if (error) throw falha(error);
       return { id };
+    },
+    async fetchBytes(id, ext) {
+      const { data, error } = await sb.storage.from(BUCKET).download(id + '.' + (ext || 'json'));
+      if (error) throw new Error('não consegui ler um arquivo salvo (' + (error.message || error) + ')');
+      return new Uint8Array(await data.arrayBuffer());
     },
     async fetch(id) {
       const { data, error } = await sb.storage.from(BUCKET).download(id + '.json');
       if (error) throw new Error('não consegui ler um arquivo salvo (' + (error.message || error) + ')');
       return JSON.parse(await data.text());
     },
-    async delete(id) {
-      const { error } = await sb.storage.from(BUCKET).remove([id + '.json']);
+    async delete(id, ext) {
+      const { error } = await sb.storage.from(BUCKET).remove([id + '.' + (ext || 'json')]);
       if (error) throw falha(error);
     }
   };

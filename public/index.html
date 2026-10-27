@@ -237,6 +237,21 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
     <div class="more"><span class="muted num" id="countInfo"></span><button class="small" id="btnMore" hidden>Mostrar mais 200</button><button class="small" id="btnExport2" disabled>Exportar esta visão para Excel</button></div>
   </section>
 
+  <section class="panel" aria-labelledby="hMes" id="mesPanel">
+    <div class="panel-head">
+      <h2 id="hMes">Consolidado do mês</h2>
+      <span class="muted">Todos os críticos de um mês num arquivo só, um por aba. Fica salvo aqui mesmo depois que os críticos do dia saem da lista.</span>
+    </div>
+    <div class="notice" id="mesAviso" hidden></div>
+    <div class="run-row">
+      <label class="muted" for="mesSel">Mês</label>
+      <select id="mesSel" aria-label="Mês do consolidado"></select>
+      <button class="primary" id="btnMes" type="button" disabled>Consolidar e exportar</button>
+      <span class="muted" id="mesStatus" role="status"></span>
+    </div>
+    <div class="refs" id="mesLista"></div>
+  </section>
+
   <section class="panel" aria-labelledby="hNotes" id="notesPanel">
     <div class="panel-head">
       <h2 id="hNotes">Anotações da reunião</h2>
@@ -327,7 +342,7 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
     estado: null, cfg: JSON.parse(JSON.stringify(E.DEFAULT_CFG)),
     depara: null, top20: null, execucoes: [],
     view: null, viewData: null, lastXlsx: null, rows: [], shown: 200,
-    sort: { k: 'J', dir: -1 }, running: false, local: {}, anot: new Map(), pontos: []
+    sort: { k: 'J', dir: -1 }, running: false, local: {}, anot: new Map(), pontos: [], mensal: {}, mesRodando: false
   };
 
   // ---------- log/progresso ----------
@@ -351,7 +366,7 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
   }
   async function loadExecucoes() {
     if (!S.db) return [];
-    const snap = await S.db.collection('execucoes').orderBy('data', 'desc').limit(30).get();
+    const snap = await S.db.collection('execucoes').orderBy('data', 'desc').limit(120).get();
     return snap.docs.map(d => Object.assign({ id: d.id }, d.data()));
   }
 
@@ -474,14 +489,109 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
       await S.db.doc('execucoes/' + id).set({ data: snap.data, nome: snap.nome, fonte: snap.fonte, assetId, linhas: n, totais: tot || null, completo: !!snap.linhas, criadoEm: new Date().toISOString() });
       if (old && old.assetId && old.assetId !== assetId) { try { await S.assets.delete(old.assetId); } catch (e) { } }
       S.execucoes = await loadExecucoes();
-      for (const x of S.execucoes.slice(20)) { try { await S.assets.delete(x.assetId); await S.db.doc('execucoes/' + x.id).delete(); } catch (e) { } }
-      S.execucoes = S.execucoes.slice(0, 20);
+      const sobra = S.execucoes.slice(20).filter(x => mesConsolidado(x.data));
+      for (const x of sobra) { try { await S.assets.delete(x.assetId); await S.db.doc('execucoes/' + x.id).delete(); } catch (e) { } }
+      S.execucoes = S.execucoes.filter(x => !sobra.includes(x));
+      renderMes();
     } else {
       S.execucoes = [{ id, data: snap.data, nome: snap.nome, fonte: snap.fonte, completo: !!snap.linhas, linhas: n }].concat(S.execucoes.filter(x => x.id !== id));
       S.localSnaps = S.localSnaps || {}; S.localSnaps[id] = snap;
       throw new Error('o armazenamento da página não está disponível nesta visualização');
     }
     renderRefs(); renderHistory();
+  }
+
+  // ---------- consolidado do mês ----------
+  // mensal/<AAAA-MM> = { mes, criticos: [{ id, nome, gzId, origem, totais }], criadoEm, atualizadoEm }
+  // Cada crítico do mês é guardado compactado (.json.gz), separado dos críticos do dia, que saem depois dos 20 mais novos.
+  const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+  const nomeMes = m => MESES[+m.slice(5, 7) - 1] + ' de ' + m.slice(0, 4);
+  function mesConsolidado(data) {
+    const m = S.mensal[data.slice(0, 7)]; if (!m) return false;
+    const ex = S.execucoes.find(x => x.id === data);
+    const c = m.criticos.find(x => x.id === data);
+    return !!c && (!ex || c.origem === ex.assetId);
+  }
+  async function loadMensal() {
+    S.mensal = {};
+    if (!S.db) return;
+    const snap = await S.db.collection('mensal').limit(240).get();
+    for (const d of snap.docs) S.mensal[d.id] = d.data();
+  }
+  const pendentes = mes => S.execucoes.filter(x => x.completo && x.data.slice(0, 7) === mes && !mesConsolidado(x.data)).length;
+  function renderMes() {
+    const meses = new Set(Object.keys(S.mensal));
+    for (const x of S.execucoes) if (x.completo) meses.add(x.data.slice(0, 7));
+    const lista = [...meses].sort().reverse();
+    const sel = $('mesSel'), atual = sel.value, hoje = isoToday().slice(0, 7);
+    sel.innerHTML = lista.map(m => {
+      const n = S.execucoes.filter(x => x.completo && x.data.slice(0, 7) === m).length, salvo = S.mensal[m];
+      const qtd = Math.max(n, salvo ? salvo.criticos.length : 0);
+      return `<option value="${m}">${nomeMes(m)} · ${qtd} crítico${qtd === 1 ? '' : 's'}${salvo ? (pendentes(m) ? ' · falta consolidar ' + pendentes(m) : ' · salvo') : ''}</option>`;
+    }).join('');
+    const passado = lista.filter(m => m < hoje && pendentes(m) > 0);
+    sel.value = lista.includes(atual) ? atual : (passado[0] || lista[0] || '');
+    $('btnMes').disabled = !sel.value || S.mesRodando;
+    const av = $('mesAviso');
+    if (passado.length) { av.hidden = false; av.textContent = 'Virou o mês: ' + passado.map(m => nomeMes(m) + ' (' + pendentes(m) + ' crítico' + (pendentes(m) === 1 ? '' : 's') + ')').join(', ') + ' ainda não foi consolidado. Escolha o mês e clique em Consolidar e exportar.'; }
+    else av.hidden = true;
+    const salvos = Object.keys(S.mensal).sort().reverse();
+    $('mesLista').innerHTML = salvos.length ? salvos.map(m => `<button class="small" data-mes="${m}" type="button" title="Baixar de novo o consolidado salvo">Baixar ${nomeMes(m)} · ${S.mensal[m].criticos.length} abas</button>`).join('') : '<span class="muted">Nenhum consolidado salvo ainda.</span>';
+  }
+  const gz = obj => fflate.gzipSync(fflate.strToU8(JSON.stringify(obj)), { level: 6 });
+  const ungz = u8 => JSON.parse(fflate.strFromU8(fflate.gunzipSync(u8)));
+  async function consolidarMes(mes, soBaixar) {
+    if (S.mesRodando) return;
+    S.mesRodando = true; $('btnMes').disabled = true;
+    const st = $('mesStatus');
+    try {
+      if (!S.db || !S.assets) throw new Error('Sem acesso ao banco. Entre no site de novo.');
+      const antigo = S.mensal[mes];
+      const ant = new Map((antigo ? antigo.criticos : []).map(c => [c.id, c]));
+      const dias = S.execucoes.filter(x => x.completo && x.data.slice(0, 7) === mes);
+      const ids = [...new Set([...ant.keys(), ...dias.map(x => x.id)])].sort();
+      if (!ids.length) throw new Error('Nenhum crítico salvo em ' + nomeMes(mes) + '.');
+      const criticos = [], bytes = {}, novos = [];
+      for (let i = 0; i < ids.length; i++) {
+        const id = ids[i], ex = dias.find(x => x.id === id), c = ant.get(id);
+        st.textContent = 'Juntando os críticos… ' + (i + 1) + ' de ' + ids.length;
+        if (c && (!ex || soBaixar || c.origem === ex.assetId)) {
+          bytes[id] = await S.assets.fetchBytes(c.gzId, 'json.gz'); criticos.push(c); continue;
+        }
+        const snap = await fetchAsset(ex.assetId);
+        const b = gz(snap); bytes[id] = b;
+        const { id: gzId } = await S.assets.upload(new Blob([b], { type: 'application/gzip' }), { ext: 'json.gz', type: 'application/gzip' });
+        novos.push(gzId);
+        criticos.push({ id, nome: snap.nome, gzId, origem: ex.assetId, totais: totais(snap), diasAlvo: (snap.params && snap.params.diasAlvo) || 30 });
+      }
+      if (!soBaixar) {
+        const doc = { mes, criticos, criadoEm: (antigo && antigo.criadoEm) || new Date().toISOString(), atualizadoEm: new Date().toISOString() };
+        await S.db.doc('mensal/' + mes).set(doc);
+        const usados = new Set(criticos.map(c => c.gzId));
+        for (const c of ant.values()) if (!usados.has(c.gzId)) { try { await S.assets.delete(c.gzId, 'json.gz'); } catch (e) { } }
+        S.mensal[mes] = doc;
+      }
+      st.textContent = 'Gerando o Excel…'; await nextFrame();
+      const blob = await xlsxMes(mes, criticos, bytes, f => { st.textContent = 'Gerando o Excel… ' + Math.round(f * 100) + '%'; });
+      await S.downloads.save({ filename: 'Criticos_' + mes.slice(5, 7) + '_' + mes.slice(0, 4) + '.xlsx', data: blob });
+      st.textContent = (soBaixar ? 'Baixado: ' : 'Consolidado salvo e baixado: ') + nomeMes(mes) + ', ' + criticos.length + ' abas.';
+    } catch (e) { console.error(e); st.textContent = 'Não consegui consolidar: ' + (e.message || e); }
+    S.mesRodando = false; renderMes();
+  }
+  async function xlsxMes(mes, criticos, bytes, onProg) {
+    const ix = k => KEYS.indexOf(k);
+    const VC = COLS.filter(c => c[2] !== 'note');
+    const W = { B: 18, D: 9, E: 22, F: 10, H: 42, J: 15, P: 14, Q: 13, V: 16, AI: 14 };
+    const cols = VC.map(([k, t, c]) => ({ t, w: W[k] || 13, s: c && c.startsWith('l') ? 'txtL' : c === 'rs' ? 'rs2' : (c === 'dias' || c === 'd1') ? 'dec1' : 'int' }));
+    const resumoCols = [{ t: 'Data', w: 12, s: 'txtL' }, { t: 'Crítico', w: 28, s: 'txtL' }, { t: 'Itens', w: 10, s: 'int' }, { t: 'Itens acima dos dias alvo', w: 14, s: 'int' }, { t: 'Físico (un)', w: 14, s: 'int' }, { t: 'R$ Tabela', w: 16, s: 'rs2' }, { t: 'Venda nec. R$', w: 16, s: 'rs2' }, { t: 'Venda nec. R$ (acima do alvo)', w: 18, s: 'rs2' }, { t: 'Dias de estoque', w: 12, s: 'dec1' }];
+    const abas = [{ nome: 'Resumo ' + mes.slice(5, 7) + '_' + mes.slice(0, 4), tab: 'FF000000', titulo: 'Críticos de ' + nomeMes(mes) + ' · ' + criticos.length + ' críticos', cols: resumoCols,
+      linhas: criticos.map(c => { const t = c.totais || {}; return [brDate(c.id), c.nome, t.n, t.crit, t.I, t.J, t.V, t.critR, t.dias]; }) }];
+    for (const c of criticos) abas.push(() => {
+      const snap = ungz(bytes[c.id]);
+      const linhas = snap.linhas.map(r => VC.map(([k, , t]) => { const v = r[ix(k)]; if (t === 'dias' && v >= 9999) return 'sem venda'; return typeof v === 'string' ? v.trim() : v; }));
+      return { nome: snap.nome, titulo: snap.nome + ' · ' + fmtI.format(linhas.length) + ' itens', cols, linhas };
+    });
+    return E.gerarXlsxAbas(abas, onProg);
   }
 
   // ---------- visualização ----------
@@ -794,6 +904,8 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
   $('r-top20').addEventListener('change', e => e.target.files[0] && trocarRef(e.target.files[0], 'top20'));
   $('r-all').addEventListener('change', e => e.target.files[0] && trocarRef(e.target.files[0], 'all'));
   $('btnBackup').addEventListener('click', baixarBackup);
+  $('btnMes').addEventListener('click', () => $('mesSel').value && consolidarMes($('mesSel').value, false));
+  $('mesLista').addEventListener('click', e => { const b = e.target.closest('button[data-mes]'); if (b) consolidarMes(b.dataset.mes, true); });
   $('r-backup').addEventListener('change', e => { const f = e.target.files[0]; e.target.value = ''; if (f) restaurarBackup(f); });
   $('btnRun').addEventListener('click', run);
   $('btnDown').addEventListener('click', download);
@@ -871,6 +983,8 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
   }
 
   // ---------- backup ----------
+  function b64(u8) { let s = ''; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); }
+  function unb64(t) { const s = atob(t), u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u; }
   async function baixarBackup() {
     const st = $('backupStatus');
     try {
@@ -882,7 +996,13 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
       }
       const an = await S.db.collection('anotacoes').limit(5000).get();
       const pontos = await S.db.doc('reuniao/pontos').get();
-      const b = { tipo: 'estoque-critico-backup', v: 1, em: new Date().toISOString(), estado: S.estado || {}, depara: S.depara, top20: S.top20, execucoes,
+      const mensal = [];
+      for (const [mes, doc] of Object.entries(S.mensal)) {
+        const arquivos = {};
+        for (const c of doc.criticos) { try { arquivos[c.gzId] = b64(await S.assets.fetchBytes(c.gzId, 'json.gz')); } catch (e) { } }
+        mensal.push({ id: mes, doc, arquivos });
+      }
+      const b = { tipo: 'estoque-critico-backup', v: 1, em: new Date().toISOString(), estado: S.estado || {}, depara: S.depara, top20: S.top20, execucoes, mensal,
         anotacoes: an.docs.map(d => ({ id: d.id, data: d.data() })), pontos: pontos.exists ? pontos.data() : { itens: [] } };
       await S.downloads.save({ filename: 'estoque-critico-backup-' + isoToday() + '.json', data: new Blob([JSON.stringify(b)], { type: 'application/json' }) });
       st.textContent = 'Backup baixado.';
@@ -898,16 +1018,22 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
       const estado = Object.assign({}, b.estado || {});
       if (b.depara) { st.textContent = 'Salvando De-para…'; estado.depara = Object.assign({}, estado.depara, { id: await uploadJson(b.depara) }); }
       if (b.top20) { st.textContent = 'Salvando Top 20…'; estado.top20 = Object.assign({}, estado.top20, { id: await uploadJson(b.top20) }); }
-      let n = 0;
+      let n = 0; const novoAsset = {};
       for (const ex of b.execucoes || []) {
         st.textContent = 'Salvando críticos… ' + (++n) + ' de ' + b.execucoes.length;
         const doc = Object.assign({}, ex.doc);
-        if (ex.snapshot) doc.assetId = await uploadJson(ex.snapshot);
+        if (ex.snapshot) { doc.assetId = await uploadJson(ex.snapshot); if (ex.doc.assetId) novoAsset[ex.doc.assetId] = doc.assetId; }
         await S.db.doc('execucoes/' + ex.id).set(doc);
       }
       n = 0;
       for (const a of b.anotacoes || []) { if (++n % 20 === 0) st.textContent = 'Salvando anotações… ' + n + ' de ' + b.anotacoes.length; await S.db.doc('anotacoes/' + a.id).set(a.data); }
       if (b.pontos) await S.db.doc('reuniao/pontos').set(b.pontos);
+      for (const m of b.mensal || []) {
+        st.textContent = 'Salvando o consolidado de ' + nomeMes(m.id) + '…';
+        const doc = JSON.parse(JSON.stringify(m.doc));
+        for (const c of doc.criticos) { if (novoAsset[c.origem]) c.origem = novoAsset[c.origem]; const raw = m.arquivos && m.arquivos[c.gzId]; if (!raw) continue; c.gzId = (await S.assets.upload(new Blob([unb64(raw)], { type: 'application/gzip' }), { ext: 'json.gz', type: 'application/gzip' })).id; }
+        await S.db.doc('mensal/' + m.id).set(doc);
+      }
       S.estado = {}; await saveEstado(estado);
       st.textContent = 'Backup restaurado. Recarregando…';
       setTimeout(() => location.reload(), 800);
@@ -926,6 +1052,8 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
       renderRules();
       try { await loadAnot(); } catch (e) { log('Não consegui ler as anotações: ' + (e.message || e.code), 'err'); }
       S.execucoes = await loadExecucoes();
+      try { await loadMensal(); } catch (e) { log('Não consegui ler os consolidados do mês: ' + (e.message || e.code), 'err'); }
+      renderMes();
       const jobs = [];
       if (S.estado.depara && S.estado.depara.id) jobs.push(fetchAsset(S.estado.depara.id).then(r => { S.depara = r; }));
       if (S.estado.top20 && S.estado.top20.id) jobs.push(fetchAsset(S.estado.top20.id).then(r => { S.top20 = r; }));

@@ -690,6 +690,39 @@
     return pacote([{ name: nome, xml }], sst, `<definedNames><definedName name="_xlnm._FilterDatabase" localSheetId="0" hidden="1">${xesc(q(nome))}!$A$3:$${lc}$${last}</definedName></definedNames>`);
   }
 
+  // Várias abas de tabela num xlsx só. Cada aba vai para o zip assim que fica pronta, para não segurar tudo na memória.
+  async function gerarXlsxAbas(abas, onProgress) {
+    const sst = makeSST();
+    const out = [];
+    let fim, erro;
+    const pronto = new Promise((res, rej) => { fim = res; erro = rej; });
+    const zip = new fflate.Zip((err, chunk, final) => { if (err) return erro(err); out.push(chunk); if (final) fim(); });
+    const enc = t => fflate.strToU8(t);
+    const add = (nome, txt) => { const f = new fflate.ZipDeflate(nome, { level: 6 }); zip.add(f); f.push(enc(txt), true); };
+    const nomes = [], filtros = [];
+    for (let i = 0; i < abas.length; i++) {
+      const a = typeof abas[i] === 'function' ? await abas[i]() : abas[i];
+      const rows = [[{ v: a.titulo, s: 'bold' }], [], a.cols.map(c => ({ v: c.t, s: 'h_azul' }))];
+      for (const l of a.linhas) rows.push(l.map((v, j) => v == null || v === '' ? null : { v, s: typeof v === 'number' ? a.cols[j].s : (a.cols[j].s === 'txtL' ? 'txtL' : 'txt') }));
+      const last = rows.length, lc = colName(a.cols.length - 1);
+      const nome = a.nome.slice(0, 31); nomes.push(nome);
+      if (a.linhas.length) filtros.push(`<definedName name="_xlnm._FilterDatabase" localSheetId="${i}" hidden="1">${xesc(q(nome))}!$A$3:$${lc}$${last}</definedName>`);
+      add(`xl/worksheets/sheet${i + 1}.xml`, sheetXml(rows, sst, { selected: i === 0, tab: a.tab, freeze: [0, 3], cols: a.cols.map(c => ({ w: c.w || 14 })), autoFilter: a.linhas.length ? `A3:${lc}${last}` : null, rowHeights: { 2: 32 } }));
+      if (onProgress) onProgress((i + 1) / abas.length);
+      await new Promise(r => setTimeout(r, 0));
+    }
+    const n = nomes.length;
+    add('[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' + nomes.map((s, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('') + '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/><Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/></Types>');
+    add('_rels/.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>');
+    add('xl/workbook.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><bookViews><workbookView activeTab="0"/></bookViews><sheets>' + nomes.map((s, i) => `<sheet name="${xesc(s)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join('') + '</sheets>' + (filtros.length ? '<definedNames>' + filtros.join('') + '</definedNames>' : '') + '<calcPr calcId="191029"/></workbook>');
+    add('xl/_rels/workbook.xml.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' + nomes.map((s, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join('') + `<Relationship Id="rId${n + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rId${n + 2}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/></Relationships>`);
+    add('xl/styles.xml', stylesXml());
+    add('xl/sharedStrings.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="' + sst.list.length + '" uniqueCount="' + sst.list.length + '">' + sst.list.map(t => '<si><t xml:space="preserve">' + xesc(t) + '</t></si>').join('') + '</sst>');
+    zip.end();
+    await pronto;
+    return new Blob(out, { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  }
+
   function pacote(sheets, sst, definedNames) {
     const files = {};
     const enc = s => fflate.strToU8(s);
@@ -719,5 +752,5 @@
     comprasOperacoesBoni: ['1.910', '2.910']
   };
 
-  root.CriticoEngine = { gerarXlsxTabela, _stream: streamEntry, _lerVendas: lerVendas, KEYS: ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','AD','AE','AF','AG','AH','AI'], openWorkbook, executar, calcular, gerarXlsx, lerReferencia, lerCriticoSheet, DEFAULT_CFG, toISODate };
+  root.CriticoEngine = { gerarXlsxTabela, gerarXlsxAbas, _stream: streamEntry, _lerVendas: lerVendas, KEYS: ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','AD','AE','AF','AG','AH','AI'], openWorkbook, executar, calcular, gerarXlsx, lerReferencia, lerCriticoSheet, DEFAULT_CFG, toISODate };
 })(typeof window !== 'undefined' ? window : globalThis);
