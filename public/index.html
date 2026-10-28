@@ -326,6 +326,7 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
     <div class="run-row">
       <select id="ata-sel" aria-label="Atas salvas"></select>
       <button class="primary" id="btnAtaNova" type="button">Nova ata</button>
+      <button id="btnAtaCsvTodas" type="button">Baixar todas as atas (CSV)</button>
       <span class="muted" id="ataStatus" role="status"></span>
     </div>
     <div id="ataForm" hidden>
@@ -351,6 +352,7 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
       <div class="run-row" style="margin-top:12px">
         <button class="primary" id="btnAtaFim" type="button">Finalizar ata</button>
         <button id="btnAtaPrint" type="button">Imprimir / salvar em PDF</button>
+        <button id="btnAtaCsv" type="button">Baixar CSV</button>
         <button id="btnAtaDel" type="button">Excluir ata</button>
         <span class="muted" id="ataAutor"></span>
       </div>
@@ -998,7 +1000,7 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
     for (const el of $('ataForm').querySelectorAll('[data-k]')) el.value = a[el.dataset.k] || '';
     renderAtaAcoes(); renderAtaResumo();
     const trav = ataTravada();
-    $('ataForm').querySelectorAll('input,textarea,select,#ataForm button').forEach(el => { if (!['btnAtaFim', 'btnAtaPrint'].includes(el.id)) el.disabled = trav; });
+    $('ataForm').querySelectorAll('input,textarea,select,#ataForm button').forEach(el => { if (!['btnAtaFim', 'btnAtaPrint', 'btnAtaCsv'].includes(el.id)) el.disabled = trav; });
     $('ataLock').hidden = !trav;
     $('ataLock').textContent = trav ? 'Ata finalizada por ' + (a.finalizadaPor || '—') + ' em ' + brDate((a.finalizadaEm || '').slice(0, 10)) + '. Para mudar, clique em Reabrir ata.' : '';
     $('btnAtaFim').textContent = trav ? 'Reabrir ata' : 'Finalizar ata';
@@ -1057,6 +1059,43 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
     }
     renderAtaAcoes(); saveAta();
     $('ataStatus').textContent = n ? n + ' anotações abertas incluídas como ações.' : 'Todas as anotações abertas já estão na ata.';
+  }
+  // CSV para Excel pt-BR: ponto e vírgula, BOM UTF-8, uma linha por ação (os dados da ata se repetem em cada linha).
+  const ATA_CSV_COLS = ['Data', 'Hora', 'Local / formato', 'Participantes', 'Crítico de referência', 'Pauta', 'Decisões', 'Próxima reunião', 'Observações gerais',
+    'Situação da ata', 'Criada por', 'Finalizada por', 'Finalizada em', 'Loja', 'Código', 'Descrição', 'Ação', 'Observação', 'Dono', 'Prazo', 'Status'];
+  function ataCsv(lista) {
+    const c = v => { v = v == null ? '' : String(v); return /[;"\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+    const dt = v => v ? brDate(String(v).slice(0, 10)) : '';
+    const linhas = [ATA_CSV_COLS.map(c).join(';')];
+    for (const a of lista) {
+      const base = [dt(a.data), a.hora, a.local, a.participantes, dt(a.critico), a.pauta, a.decisoes, dt(a.proxima), a.observacoes,
+        a.status === 'finalizada' ? 'finalizada' : 'rascunho', a.criadaPor, a.finalizadaPor, dt(a.finalizadaEm)];
+      const acoes = (a.acoes || []).length ? a.acoes : [{}];
+      for (const x of acoes) linhas.push([...base, x.loja, x.codigo, x.descricao, x.acao, x.obs, x.dono, dt(x.prazo), x.status].map(c).join(';'));
+    }
+    return new Blob(['\ufeff' + linhas.join('\r\n') + '\r\n'], { type: 'text/csv;charset=utf-8' });
+  }
+  const ataNomeCsv = a => 'Ata_' + a.id.replace(/[^0-9_-]/g, '') + '.csv';
+  // Ao finalizar, guarda o CSV da ata no Supabase (troca o anterior, se a ata foi reaberta e finalizada de novo).
+  async function guardarAtaCsv(a) {
+    if (!S.assets) return;
+    const velho = a.csvId;
+    const r = await S.assets.upload(ataCsv([a]), { ext: 'csv', type: 'text/csv' });
+    a.csvId = r.id;
+    if (velho) { try { await S.assets.delete(velho, 'csv'); } catch (e) { } }
+  }
+  async function baixarAtaCsv() {
+    const a = S.ata; if (!a) return;
+    try {
+      let blob = null;
+      if (ataTravada() && a.csvId && S.assets) { try { blob = new Blob([await S.assets.fetchBytes(a.csvId, 'csv')], { type: 'text/csv' }); } catch (e) { } }
+      await S.downloads.save({ filename: ataNomeCsv(a), data: blob || ataCsv([a]) });
+    } catch (e) { $('ataStatus').textContent = 'Não consegui baixar: ' + (e.message || e); }
+  }
+  async function baixarAtasCsv() {
+    if (!S.atas.length) { $('ataStatus').textContent = 'Nenhuma ata salva ainda.'; return; }
+    const lista = [...S.atas].sort((a, b) => (a.data + (a.hora || '')).localeCompare(b.data + (b.hora || '')));
+    await S.downloads.save({ filename: 'Atas_ate_' + isoToday() + '.csv', data: ataCsv(lista) });
   }
   function imprimirAta() {
     const a = S.ata; if (!a) return;
@@ -1309,13 +1348,18 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
   $('btnAtaFim').addEventListener('click', async () => {
     const a = S.ata; if (!a) return;
     if (ataTravada()) { a.status = 'rascunho'; delete a.finalizadaPor; delete a.finalizadaEm; }
-    else { if (!confirm('Finalizar a ata de ' + brDate(a.data) + '? Ela fica travada até alguém reabrir.')) return; a.status = 'finalizada'; a.finalizadaPor = S.user || ''; a.finalizadaEm = new Date().toISOString(); }
+    else { if (!confirm('Finalizar a ata de ' + brDate(a.data) + '? Ela fica travada até alguém reabrir.')) return; a.status = 'finalizada'; a.finalizadaPor = S.user || ''; a.finalizadaEm = new Date().toISOString();
+      try { await guardarAtaCsv(a); } catch (e) { $('ataStatus').textContent = 'A ata foi finalizada, mas não consegui guardar o CSV: ' + (e.message || e); }
+    }
     await saveAta(true); renderAta();
+    if (ataTravada() && a.csvId) $('ataStatus').textContent += ' CSV guardado.';
   });
   $('btnAtaPrint').addEventListener('click', imprimirAta);
+  $('btnAtaCsv').addEventListener('click', baixarAtaCsv);
+  $('btnAtaCsvTodas').addEventListener('click', baixarAtasCsv);
   $('btnAtaDel').addEventListener('click', async () => {
     const a = S.ata; if (!a || !confirm('Excluir a ata de ' + brDate(a.data) + '? Não dá para desfazer.')) return;
-    try { await S.db.doc('atas/' + a.id).delete(); S.atas = S.atas.filter(x => x !== a); S.ata = S.atas[0] || null; renderAta(); $('ataStatus').textContent = 'Ata excluída.'; }
+    try { await S.db.doc('atas/' + a.id).delete(); if (a.csvId && S.assets) { try { await S.assets.delete(a.csvId, 'csv'); } catch (e) { } } S.atas = S.atas.filter(x => x !== a); S.ata = S.atas[0] || null; renderAta(); $('ataStatus').textContent = 'Ata excluída.'; }
     catch (e) { $('ataStatus').textContent = 'Não consegui excluir: ' + (e.message || e.code); }
   });
   $('projTbl').addEventListener('input', projMudou);
