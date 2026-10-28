@@ -97,6 +97,11 @@ details.cols summary { cursor: pointer; font-weight: 600; font-size: 13px; }
 .col-list button { padding: 2px 8px; font-size: 12px; }
 td.note { text-align: left; white-space: normal; min-width: 120px; max-width: 260px; cursor: text; background: color-mix(in srgb, var(--accent-soft) 45%, transparent); }
 td.note.empty { color: var(--muted); }
+#ataForm input[type=text], #ataForm input[type=time], #ataForm textarea { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 7px; padding: 7px 9px; width: 100%; }
+#ataForm textarea { resize: vertical; }
+#ataForm .field label { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+#ataAcoes input, #ataAcoes select { font: inherit; padding: 3px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); width: 100%; min-width: 80px; }
+#ataAcoes td { vertical-align: top; } #ataAcoes td.l { white-space: normal; }
 #cmpTbl td.nota { text-align: left; white-space: normal; min-width: 200px; max-width: 320px; }
 #cmpTbl td.nota.mud { background: color-mix(in srgb, var(--accent-soft) 70%, transparent); }
 #cmpTbl .sit { font-size: 11.5px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--surface-2); }
@@ -311,6 +316,45 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
       <div class="notes-box"><table id="cmpTbl"><thead></thead><tbody></tbody></table></div>
     </details>
     <datalist id="dl-acao"></datalist><datalist id="dl-dono"></datalist>
+  </section>
+
+  <section class="panel" aria-labelledby="hAta" id="ataPanel">
+    <div class="panel-head">
+      <h2 id="hAta">Ata da reunião</h2>
+      <span class="muted">Registro de cada reunião do crítico: quem participou, o que foi discutido, o que foi decidido e as ações com dono e prazo. Salva sozinha.</span>
+    </div>
+    <div class="run-row">
+      <select id="ata-sel" aria-label="Atas salvas"></select>
+      <button class="primary" id="btnAtaNova" type="button">Nova ata</button>
+      <span class="muted" id="ataStatus" role="status"></span>
+    </div>
+    <div id="ataForm" hidden>
+      <div class="notice" id="ataLock" hidden></div>
+      <div class="params" style="margin-top:6px">
+        <div class="field"><label for="ata-data">Data</label><input type="date" id="ata-data" data-k="data"></div>
+        <div class="field"><label for="ata-hora">Início</label><input type="time" id="ata-hora" data-k="hora"></div>
+        <div class="field"><label for="ata-crit">Crítico de referência</label><select id="ata-crit" data-k="critico"></select></div>
+        <div class="field" style="flex:1;min-width:200px"><label for="ata-local">Local / formato</label><input type="text" id="ata-local" data-k="local" placeholder="Sala de reunião, Teams…"></div>
+      </div>
+      <div class="field" style="margin-top:10px"><label for="ata-part">Participantes</label><textarea id="ata-part" data-k="participantes" rows="2" placeholder="Um nome por linha ou separados por vírgula"></textarea></div>
+      <div class="tiles" id="ataResumo" style="margin-top:10px"></div>
+      <div class="field" style="margin-top:10px"><label for="ata-pauta">Pauta / pontos discutidos <button class="small" id="btnAtaPontos" type="button">Puxar pontos da reunião</button></label><textarea id="ata-pauta" data-k="pauta" rows="5"></textarea></div>
+      <div class="field" style="margin-top:10px"><label for="ata-dec">Decisões</label><textarea id="ata-dec" data-k="decisoes" rows="4"></textarea></div>
+      <div class="field" style="margin-top:10px">
+        <label>Ações <button class="small" id="btnAtaAnot" type="button">Puxar anotações abertas</button> <button class="small" id="btnAtaAcao" type="button">Adicionar ação</button></label>
+        <div class="notes-box"><table id="ataAcoes"><thead><tr><th class="l">Loja</th><th class="l">Código</th><th class="l">Descrição</th><th class="l">Ação</th><th class="l">Observação</th><th class="l">Dono</th><th class="l">Prazo</th><th class="l">Status</th><th></th></tr></thead><tbody></tbody></table></div>
+      </div>
+      <div class="params" style="margin-top:10px">
+        <div class="field"><label for="ata-prox">Próxima reunião</label><input type="date" id="ata-prox" data-k="proxima"></div>
+        <div class="field" style="flex:1;min-width:240px"><label for="ata-obs">Observações gerais</label><textarea id="ata-obs" data-k="observacoes" rows="2"></textarea></div>
+      </div>
+      <div class="run-row" style="margin-top:12px">
+        <button class="primary" id="btnAtaFim" type="button">Finalizar ata</button>
+        <button id="btnAtaPrint" type="button">Imprimir / salvar em PDF</button>
+        <button id="btnAtaDel" type="button">Excluir ata</button>
+        <span class="muted" id="ataAutor"></span>
+      </div>
+    </div>
   </section>
 
   <section class="panel" aria-labelledby="hRefs">
@@ -932,6 +976,113 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
     btn.disabled = false;
   }
 
+  // ---------- ata da reunião ----------
+  // atas/<id> = { data, hora, critico, local, participantes, pauta, decisoes, acoes: [{loja,codigo,descricao,acao,obs,dono,prazo,status}],
+  //               proxima, observacoes, status: rascunho|finalizada, criadaPor, criadaEm, finalizadaPor, finalizadaEm }
+  S.atas = []; S.ata = null;
+  async function loadAtas() {
+    if (!S.db) return;
+    const snap = await S.db.collection('atas').limit(500).get();
+    S.atas = snap.docs.map(d => Object.assign({ id: d.id }, d.data())).sort((a, b) => (b.data + (b.hora || '')).localeCompare(a.data + (a.hora || '')));
+  }
+  function renderAtaSel() {
+    const sel = $('ata-sel');
+    sel.innerHTML = S.atas.length ? S.atas.map(a => `<option value="${a.id}"${S.ata && S.ata.id === a.id ? ' selected' : ''}>${brDate(a.data)}${a.hora ? ' ' + a.hora : ''}${a.status === 'finalizada' ? ' · finalizada' : ' · rascunho'}</option>`).join('') : '<option value="">Nenhuma ata ainda</option>';
+  }
+  const ataTravada = () => S.ata && S.ata.status === 'finalizada';
+  function renderAta() {
+    renderAtaSel();
+    const a = S.ata; $('ataForm').hidden = !a; if (!a) return;
+    const lista = S.execucoes.filter(x => x.completo);
+    $('ata-crit').innerHTML = '<option value="">—</option>' + lista.map(x => `<option value="${x.id}">${brDate(x.data)}</option>`).join('');
+    for (const el of $('ataForm').querySelectorAll('[data-k]')) el.value = a[el.dataset.k] || '';
+    renderAtaAcoes(); renderAtaResumo();
+    const trav = ataTravada();
+    $('ataForm').querySelectorAll('input,textarea,select,#ataForm button').forEach(el => { if (!['btnAtaFim', 'btnAtaPrint'].includes(el.id)) el.disabled = trav; });
+    $('ataLock').hidden = !trav;
+    $('ataLock').textContent = trav ? 'Ata finalizada por ' + (a.finalizadaPor || '—') + ' em ' + brDate((a.finalizadaEm || '').slice(0, 10)) + '. Para mudar, clique em Reabrir ata.' : '';
+    $('btnAtaFim').textContent = trav ? 'Reabrir ata' : 'Finalizar ata';
+    $('ataAutor').textContent = 'Criada por ' + (a.criadaPor || '—') + ' em ' + brDate((a.criadaEm || '').slice(0, 10)) + (a.atualizadaPor ? ' · última alteração: ' + a.atualizadaPor : '');
+  }
+  function renderAtaAcoes() {
+    const a = S.ata, st = v => ['aberta', 'em andamento', 'concluída'].map(o => `<option${o === v ? ' selected' : ''}>${o}</option>`).join('');
+    $('ataAcoes').tBodies[0].innerHTML = (a.acoes || []).length ? a.acoes.map((x, i) => `<tr data-i="${i}">` +
+      ['loja', 'codigo', 'descricao', 'acao', 'obs', 'dono'].map(f => `<td class="l"><input data-a="${f}" value="${esc(x[f] || '')}"${f === 'acao' ? ' list="dl-acao"' : f === 'dono' ? ' list="dl-dono"' : ''} aria-label="${f}"></td>`).join('') +
+      `<td class="l"><input type="date" data-a="prazo" value="${esc(x.prazo || '')}" aria-label="Prazo"></td><td class="l"><select data-a="status" aria-label="Status">${st(x.status || 'aberta')}</select></td>` +
+      `<td><button class="small" data-del="${i}" type="button" aria-label="Remover ação">Remover</button></td></tr>`).join('') : '<tr><td class="l" colspan="9">Nenhuma ação ainda.</td></tr>';
+  }
+  async function renderAtaResumo() {
+    const a = S.ata, box = $('ataResumo');
+    if (!a || !a.critico) { box.innerHTML = ''; return; }
+    let t = (S.execucoes.find(x => x.id === a.critico) || {}).totais;
+    if (!t) { try { const sn = await snapDe(a.critico); t = sn && sn.linhas ? totais(sn) : null; } catch (e) { } }
+    if (!t || S.ata !== a) return;
+    a.resumo = { itens: t.n, criticos: t.crit, vendaNecCrit: t.critR, tabela: t.J, dias: t.dias };
+    const tile = (k, v) => `<div class="tile"><span class="s">${k}</span><span class="v">${v}</span></div>`;
+    box.innerHTML = tile('Crítico de referência', brDate(a.critico)) + tile('Itens acima do alvo', fmtI.format(t.crit)) + tile('Venda necessária (acima do alvo)', fmtRk(t.critR)) + tile('R$ Tabela', fmtRk(t.J)) + tile('Dias de estoque', t.dias == null ? '—' : fmt1.format(t.dias));
+  }
+  let ataT;
+  function saveAta(agora) {
+    clearTimeout(ataT);
+    const a = S.ata; if (!a) return;
+    const go = async () => {
+      try {
+        if (!S.db) throw new Error('armazenamento indisponível');
+        a.atualizadaPor = S.user || ''; a.atualizadaEm = new Date().toISOString();
+        const doc = Object.assign({}, a); delete doc.id;
+        await S.db.doc('atas/' + a.id).set(doc);
+        $('ataStatus').textContent = 'Salva às ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) + '.';
+      } catch (e) { $('ataStatus').textContent = 'Não consegui salvar: ' + (e.message || e.code); }
+    };
+    if (agora) return go();
+    ataT = setTimeout(go, 700);
+  }
+  function novaAta() {
+    const d = isoToday(), now = new Date();
+    const hora = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+    const crit = (S.execucoes.find(x => x.completo && x.data <= d) || {}).id || '';
+    const ant = S.atas[0];
+    S.ata = { id: d + '_' + hora.replace(':', ''), data: d, hora, critico: crit, local: ant ? ant.local || '' : '', participantes: ant ? ant.participantes || '' : '',
+      pauta: (S.pontos || []).map(p => '• ' + p.texto).join('\n'), decisoes: '', acoes: [], proxima: '', observacoes: '', status: 'rascunho', criadaPor: S.user || '', criadaEm: new Date().toISOString() };
+    S.atas.unshift(S.ata);
+    renderAta(); saveAta(true);
+  }
+  function puxarAnotacoes() {
+    const a = S.ata; a.acoes = a.acoes || [];
+    const tem = new Set(a.acoes.map(x => x.loja + '\u0001' + x.codigo));
+    let n = 0;
+    for (const x of [...S.anot.values()].filter(ativa).sort((p, q) => p.loja.localeCompare(q.loja, 'pt-BR') || String(p.codigo).localeCompare(String(q.codigo)))) {
+      const cod = normCod(x.codigo); if (tem.has(x.loja + '\u0001' + cod)) continue;
+      a.acoes.push({ loja: x.loja, codigo: cod, descricao: x.descricao || '', acao: x.acao || '', obs: x.obs || '', dono: x.dono || '', prazo: x.data || '', status: 'aberta' }); n++;
+    }
+    renderAtaAcoes(); saveAta();
+    $('ataStatus').textContent = n ? n + ' anotações abertas incluídas como ações.' : 'Todas as anotações abertas já estão na ata.';
+  }
+  function imprimirAta() {
+    const a = S.ata; if (!a) return;
+    const e = t => esc(t || '').replace(/\n/g, '<br>');
+    const r = a.resumo;
+    const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Ata ${brDate(a.data)}</title><style>
+      body{font-family:Arial,Helvetica,sans-serif;font-size:11pt;color:#111;margin:18mm 14mm}h1{font-size:17pt;margin:0 0 2px}h2{font-size:12pt;margin:16px 0 6px;border-bottom:1px solid #999;padding-bottom:2px}
+      .sub{color:#555;margin-bottom:10px}table{border-collapse:collapse;width:100%;font-size:9pt}th,td{border:1px solid #bbb;padding:4px 5px;text-align:left;vertical-align:top}th{background:#eee}
+      .kv td{border:none;padding:2px 10px 2px 0}.ass{margin-top:40px;display:flex;gap:40px}.ass div{flex:1;border-top:1px solid #333;padding-top:4px;font-size:9pt;color:#555}@page{size:A4;margin:0}</style></head><body>
+      <h1>Ata da reunião · Estoque Crítico</h1><div class="sub">Compras · Armazém da Cerveja${a.status === 'finalizada' ? ' · Finalizada por ' + esc(a.finalizadaPor || '') + ' em ' + brDate((a.finalizadaEm || '').slice(0, 10)) : ' · Rascunho'}</div>
+      <table class="kv"><tr><td><b>Data</b></td><td>${brDate(a.data)}${a.hora ? ' às ' + esc(a.hora) : ''}</td></tr><tr><td><b>Local / formato</b></td><td>${e(a.local)}</td></tr>
+      <tr><td><b>Crítico de referência</b></td><td>${a.critico ? brDate(a.critico) : '—'}${r ? ` · ${fmtI.format(r.criticos)} itens acima do alvo · venda necessária ${fmtR.format(r.vendaNecCrit)} · R$ Tabela ${fmtR.format(r.tabela)} · ${r.dias == null ? '—' : fmt1.format(r.dias)} dias de estoque` : ''}</td></tr>
+      <tr><td><b>Participantes</b></td><td>${e(a.participantes)}</td></tr></table>
+      <h2>Pauta / pontos discutidos</h2><div>${e(a.pauta) || '—'}</div>
+      <h2>Decisões</h2><div>${e(a.decisoes) || '—'}</div>
+      <h2>Ações</h2>${(a.acoes || []).length ? `<table><tr><th>Loja</th><th>Código</th><th>Descrição</th><th>Ação</th><th>Observação</th><th>Dono</th><th>Prazo</th><th>Status</th></tr>${a.acoes.map(x => `<tr><td>${e(x.loja)}</td><td>${e(x.codigo)}</td><td>${e(x.descricao)}</td><td>${e(x.acao)}</td><td>${e(x.obs)}</td><td>${e(x.dono)}</td><td>${x.prazo ? brDate(x.prazo) : ''}</td><td>${e(x.status)}</td></tr>`).join('')}</table>` : '<div>—</div>'}
+      <h2>Próxima reunião</h2><div>${a.proxima ? brDate(a.proxima) : '—'}</div>
+      ${a.observacoes ? `<h2>Observações gerais</h2><div>${e(a.observacoes)}</div>` : ''}
+      <div class="ass"><div>Responsável pela ata</div><div>Coordenação de Compras</div></div></body></html>`;
+    const fr = document.createElement('iframe');
+    fr.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0';
+    document.body.appendChild(fr);
+    fr.onload = () => { try { fr.contentWindow.focus(); fr.contentWindow.print(); } finally { setTimeout(() => fr.remove(), 60000); } };
+    fr.srcdoc = html;
+  }
+
   function renderPontos() {
     $('pontos').innerHTML = (S.pontos || []).map((p, i) => `<li><span class="txt" data-i="${i}" tabindex="0" title="Clique para editar">${esc(p.texto)}</span><button class="small" data-del="${i}" aria-label="Remover ponto">Remover</button></li>`).join('') || '<li class="muted">Nenhum ponto anotado.</li>';
   }
@@ -1143,6 +1294,30 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
   $('r-top20').addEventListener('change', e => e.target.files[0] && trocarRef(e.target.files[0], 'top20'));
   $('r-all').addEventListener('change', e => e.target.files[0] && trocarRef(e.target.files[0], 'all'));
   $('btnBackup').addEventListener('click', baixarBackup);
+  $('btnAtaNova').addEventListener('click', novaAta);
+  $('ata-sel').addEventListener('change', () => { S.ata = S.atas.find(a => a.id === $('ata-sel').value) || null; $('ataStatus').textContent = ''; renderAta(); });
+  $('ataForm').addEventListener('input', e => {
+    const el = e.target; if (!S.ata || ataTravada()) return;
+    if (el.dataset.k) { S.ata[el.dataset.k] = el.value; if (el.dataset.k === 'critico') renderAtaResumo(); if (el.dataset.k === 'data' || el.dataset.k === 'hora') renderAtaSel(); saveAta(); return; }
+    const tr = el.closest('#ataAcoes tr[data-i]'); if (tr && el.dataset.a) { S.ata.acoes[+tr.dataset.i][el.dataset.a] = el.value; saveAta(); }
+  });
+  $('ataForm').addEventListener('change', e => { if (e.target.dataset.k === 'critico' || e.target.dataset.a === 'status') e.target.dispatchEvent(new Event('input', { bubbles: true })); });
+  $('ataAcoes').addEventListener('click', e => { const b = e.target.closest('button[data-del]'); if (!b || ataTravada()) return; S.ata.acoes.splice(+b.dataset.del, 1); renderAtaAcoes(); saveAta(); });
+  $('btnAtaAcao').addEventListener('click', () => { S.ata.acoes = S.ata.acoes || []; S.ata.acoes.push({ loja: '', codigo: '', descricao: '', acao: '', obs: '', dono: '', prazo: '', status: 'aberta' }); renderAtaAcoes(); saveAta(); });
+  $('btnAtaAnot').addEventListener('click', puxarAnotacoes);
+  $('btnAtaPontos').addEventListener('click', () => { const t = (S.pontos || []).map(p => '• ' + p.texto).join('\n'); if (!t) return; S.ata.pauta = (S.ata.pauta ? S.ata.pauta + '\n' : '') + t; $('ata-pauta').value = S.ata.pauta; saveAta(); });
+  $('btnAtaFim').addEventListener('click', async () => {
+    const a = S.ata; if (!a) return;
+    if (ataTravada()) { a.status = 'rascunho'; delete a.finalizadaPor; delete a.finalizadaEm; }
+    else { if (!confirm('Finalizar a ata de ' + brDate(a.data) + '? Ela fica travada até alguém reabrir.')) return; a.status = 'finalizada'; a.finalizadaPor = S.user || ''; a.finalizadaEm = new Date().toISOString(); }
+    await saveAta(true); renderAta();
+  });
+  $('btnAtaPrint').addEventListener('click', imprimirAta);
+  $('btnAtaDel').addEventListener('click', async () => {
+    const a = S.ata; if (!a || !confirm('Excluir a ata de ' + brDate(a.data) + '? Não dá para desfazer.')) return;
+    try { await S.db.doc('atas/' + a.id).delete(); S.atas = S.atas.filter(x => x !== a); S.ata = S.atas[0] || null; renderAta(); $('ataStatus').textContent = 'Ata excluída.'; }
+    catch (e) { $('ataStatus').textContent = 'Não consegui excluir: ' + (e.message || e.code); }
+  });
   $('projTbl').addEventListener('input', projMudou);
   $('projTbl').addEventListener('change', projMudou);
   $('projTbl').addEventListener('click', e => { const b = e.target.closest('button[data-del]'); if (!b) return; S.proj.splice(+b.dataset.del, 1); renderProj(); saveProj(); });
@@ -1223,7 +1398,7 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
     if (!sessao) {
       await new Promise(res => ST.auth.aoMudar((ev, s) => { if (s && !sessao) { sessao = s; res(); } }));
     }
-    const email = sessao.user.email;
+    const email = sessao.user.email; S.user = email;
     let papel = null;
     try { papel = await ST.auth.papel(); } catch (err) { msg.textContent = 'Não consegui verificar o seu acesso: ' + err.message; return false; }
     if (!papel) {
@@ -1266,7 +1441,7 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
         mensal.push({ id: mes, doc, arquivos });
       }
       const b = { tipo: 'estoque-critico-backup', v: 1, em: new Date().toISOString(), estado: S.estado || {}, depara: S.depara, top20: S.top20, execucoes, mensal,
-        anotacoes: an.docs.map(d => ({ id: d.id, data: d.data() })), pontos: pontos.exists ? pontos.data() : { itens: [] }, projecoes: { itens: S.proj.filter(x => x.codigo || x.qtde || x.obs) } };
+        anotacoes: an.docs.map(d => ({ id: d.id, data: d.data() })), pontos: pontos.exists ? pontos.data() : { itens: [] }, projecoes: { itens: S.proj.filter(x => x.codigo || x.qtde || x.obs) }, atas: S.atas.map(a => { const d = Object.assign({}, a); delete d.id; return { id: a.id, data: d }; }) };
       await S.downloads.save({ filename: 'estoque-critico-backup-' + isoToday() + '.json', data: new Blob([JSON.stringify(b)], { type: 'application/json' }) });
       st.textContent = 'Backup baixado.';
     } catch (err) { st.textContent = 'Não consegui gerar o backup: ' + err.message; }
@@ -1292,6 +1467,7 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
       for (const a of b.anotacoes || []) { if (++n % 20 === 0) st.textContent = 'Salvando anotações… ' + n + ' de ' + b.anotacoes.length; await S.db.doc('anotacoes/' + a.id).set(a.data); }
       if (b.pontos) await S.db.doc('reuniao/pontos').set(b.pontos);
       if (b.projecoes) await S.db.doc('reuniao/projecoes').set(b.projecoes);
+      for (const a of b.atas || []) await S.db.doc('atas/' + a.id).set(a.data);
       for (const m of b.mensal || []) {
         st.textContent = 'Salvando o consolidado de ' + nomeMes(m.id) + '…';
         const doc = JSON.parse(JSON.stringify(m.doc));
@@ -1317,12 +1493,13 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
       try { await loadAnot(); } catch (e) { log('Não consegui ler as anotações: ' + (e.message || e.code), 'err'); }
       S.execucoes = await loadExecucoes();
       try { await loadMensal(); } catch (e) { log('Não consegui ler os consolidados do mês: ' + (e.message || e.code), 'err'); }
+      try { await loadAtas(); S.ata = S.atas[0] || null; } catch (e) { log('Não consegui ler as atas: ' + (e.message || e.code), 'err'); }
       renderMes();
       const jobs = [];
       if (S.estado.depara && S.estado.depara.id) jobs.push(fetchAsset(S.estado.depara.id).then(r => { S.depara = r; }));
       if (S.estado.top20 && S.estado.top20.id) jobs.push(fetchAsset(S.estado.top20.id).then(r => { S.top20 = r; }));
       await Promise.all(jobs);
-      renderRefs(); fillDatalists(); renderNotes(); renderPontos(); renderProj();
+      renderRefs(); fillDatalists(); renderNotes(); renderPontos(); renderProj(); renderAta();
       const last = S.execucoes.find(x => x.completo);
       if (last) await openExecucao(last.id);
       else $('subtitle').textContent = 'Nenhum crítico salvo ainda.';
