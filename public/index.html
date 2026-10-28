@@ -135,7 +135,7 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
 @media (max-width: 560px) { h1 { font-size: 23px; } .tile .v { font-size: 19px; } button.primary { width: 100%; } }
 .gate { min-height: 100vh; display: grid; place-items: center; padding: 24px 16px; }
 .gate-card { width: min(420px, 100%); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 24px; display: grid; gap: 14px; }
-.gate-card input[type=email] { font: inherit; width: 100%; padding: 9px 11px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+.gate-card input[type=email], .gate-card input[type=password] { font: inherit; width: 100%; padding: 9px 11px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
 .gate-card button.primary { width: 100%; }
 .userbar { display: flex; gap: 10px; align-items: center; font-size: 12.5px; color: var(--muted); justify-content: flex-end; flex-wrap: wrap; }
 [hidden] { display: none !important; }
@@ -147,14 +147,15 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
   <form class="gate-card" id="gateForm">
     <span class="eyebrow">Compras · Armazém da Cerveja</span>
     <h1>Estoque Crítico</h1>
-    <span class="muted" id="gateMsg">Entre com o seu e-mail da empresa. Vamos mandar um link de acesso.</span>
+    <span class="muted" id="gateMsg">Entre com o seu e-mail da empresa e a senha. Sem senha, mandamos um link de acesso por e-mail.</span>
     <input type="email" id="gateEmail" required autocomplete="email" placeholder="voce@armazemdacerveja.com.br" aria-label="E-mail">
-    <button class="primary" id="gateBtn" type="submit">Receber link de acesso</button>
+    <input type="password" id="gateSenha" autocomplete="current-password" placeholder="Senha" aria-label="Senha">
+    <button class="primary" id="gateBtn" type="submit">Entrar</button>
     <span class="muted" id="gateStatus" role="status"></span>
   </form>
 </div>
 <div class="wrap" id="app" hidden>
-  <div class="userbar"><span id="userEmail"></span><button class="small" id="btnSair" type="button">Sair</button></div>
+  <div class="userbar"><span id="userEmail"></span><button class="small" id="btnSenha" type="button">Trocar senha</button><button class="small" id="btnSair" type="button">Sair</button></div>
   <header class="top">
     <div class="title">
       <span class="eyebrow">Compras · Armazém da Cerveja</span>
@@ -957,10 +958,17 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
     if (ST.auth.erro) { $('gateMsg').textContent = ST.auth.erro.message; $('gateForm').querySelectorAll('input,button').forEach(x => x.disabled = true); return false; }
     $('gateForm').addEventListener('submit', async e => {
       e.preventDefault();
-      const email = $('gateEmail').value.trim().toLowerCase();
-      $('gateBtn').disabled = true; msg.textContent = 'Enviando…';
-      try { await ST.auth.entrar(email); msg.textContent = 'Pronto. Abra o e-mail que mandamos para ' + email + ' e clique no link.'; }
-      catch (err) { msg.textContent = 'Não consegui enviar o link: ' + err.message; }
+      const email = $('gateEmail').value.trim().toLowerCase(), senha = $('gateSenha').value;
+      $('gateBtn').disabled = true;
+      if (senha) {
+        msg.textContent = 'Entrando…';
+        try { await ST.auth.entrarSenha(email, senha); msg.textContent = ''; }
+        catch (err) { msg.textContent = /invalid login/i.test(err.message) ? 'E-mail ou senha incorretos.' : 'Não consegui entrar: ' + err.message; }
+      } else {
+        msg.textContent = 'Enviando…';
+        try { await ST.auth.entrar(email); msg.textContent = 'Pronto. Abra o e-mail que mandamos para ' + email + ' e clique no link.'; }
+        catch (err) { msg.textContent = /not authorized/i.test(err.message) ? 'Ainda não conseguimos mandar e-mail para este endereço. Peça uma senha para quem administra o site.' : 'Não consegui enviar o link: ' + err.message; }
+      }
       $('gateBtn').disabled = false;
     });
     let sessao = await ST.auth.sessao();
@@ -972,13 +980,19 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
     try { papel = await ST.auth.papel(); } catch (err) { msg.textContent = 'Não consegui verificar o seu acesso: ' + err.message; return false; }
     if (!papel) {
       $('gateMsg').textContent = 'O e-mail ' + email + ' não tem acesso. Peça para incluírem você.';
-      $('gateEmail').hidden = true; $('gateBtn').textContent = 'Entrar com outro e-mail';
+      $('gateEmail').hidden = true; $('gateSenha').hidden = true; $('gateBtn').textContent = 'Entrar com outro e-mail';
       $('gateForm').addEventListener('submit', () => ST.auth.sair(), { capture: true });
       return false;
     }
     gate.hidden = true; $('app').hidden = false;
     $('userEmail').textContent = email + (papel === 'leitor' ? ' · só leitura' : '');
     $('btnSair').addEventListener('click', () => ST.auth.sair());
+    $('btnSenha').addEventListener('click', async () => {
+      const nova = prompt('Nova senha (pelo menos 8 caracteres):'); if (nova == null) return;
+      if (nova.length < 8) return alert('A senha precisa ter pelo menos 8 caracteres.');
+      if (prompt('Repita a nova senha:') !== nova) return alert('As senhas não conferem.');
+      try { await ST.auth.trocarSenha(nova); alert('Senha trocada.'); } catch (err) { alert('Não consegui trocar a senha: ' + err.message); }
+    });
     if (location.hash.includes('access_token')) history.replaceState(null, '', location.pathname);
     return true;
   }
