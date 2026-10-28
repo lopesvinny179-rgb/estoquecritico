@@ -7,7 +7,8 @@
 
   function cliente() {
     const cfg = window.CRITICO_CONFIG || {};
-    if (!cfg.supabaseUrl || !cfg.supabaseAnonKey) throw new Error('O site ainda não foi configurado (faltam SUPABASE_URL e SUPABASE_ANON_KEY na Vercel).');
+    const falta = [!cfg.supabaseUrl && 'SUPABASE_URL', !cfg.supabaseAnonKey && 'SUPABASE_ANON_KEY'].filter(Boolean);
+    if (falta.length) throw new Error('O site ainda não foi configurado: falta ' + falta.join(' e ') + ' nas variáveis de ambiente da Vercel (Production). Depois de salvar, faça um Redeploy.');
     return window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
   }
   const sb = (() => { try { return cliente(); } catch (e) { return { erro: e }; } })();
