@@ -97,6 +97,12 @@ details.cols summary { cursor: pointer; font-weight: 600; font-size: 13px; }
 .col-list button { padding: 2px 8px; font-size: 12px; }
 td.note { text-align: left; white-space: normal; min-width: 120px; max-width: 260px; cursor: text; background: color-mix(in srgb, var(--accent-soft) 45%, transparent); }
 td.note.empty { color: var(--muted); }
+#cmpTbl td.nota { text-align: left; white-space: normal; min-width: 200px; max-width: 320px; }
+#cmpTbl td.nota.mud { background: color-mix(in srgb, var(--accent-soft) 70%, transparent); }
+#cmpTbl .sit { font-size: 11.5px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--surface-2); }
+#cmpTbl .sit.nova, #cmpTbl .sit.mudou { background: var(--accent-soft); color: var(--accent-strong); }
+#cmpTbl .sit.arquivada, #cmpTbl .sit.saiu { background: var(--ok-soft); color: var(--ok); }
+#cmpTbl .up { color: var(--bad); } #cmpTbl .down { color: var(--ok); }
 #projTbl input, #projTbl select { font: inherit; padding: 4px 6px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); }
 #projTbl input.prod { width: 260px; } #projTbl input.qtd { width: 100px; text-align: right; } #projTbl input.obs { width: 180px; } #projTbl select { max-width: 220px; }
 #projTbl td.res { font-weight: 700; }
@@ -290,6 +296,20 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
         <div class="pontos-add"><textarea id="pontoNovo" placeholder="Novo ponto para a próxima reunião"></textarea><button class="small" id="btnPonto">Adicionar</button></div>
       </div>
     </div>
+    <details class="rules" id="cmpBox">
+      <summary>Comparar anotações com o crítico anterior</summary>
+      <p class="muted" style="margin:8px 0 0">Para cada produto e loja: a anotação como estava no dia escolhido, ao lado da anotação do crítico anterior, e como os números do item mudaram.</p>
+      <div class="filters" style="margin-top:10px">
+        <div class="field"><label for="cmp-a">Crítico</label><select id="cmp-a"></select></div>
+        <div class="field"><label for="cmp-b">Comparar com</label><select id="cmp-b"></select></div>
+        <div class="field"><label for="cmp-loja">Loja</label><select id="cmp-loja"><option value="">Todas</option></select></div>
+        <div class="field"><label for="cmp-q">Produto</label><input type="search" id="cmp-q" placeholder="Código ou descrição"></div>
+        <label class="check"><input type="checkbox" id="cmp-mud" checked> Só o que mudou</label>
+        <button class="small" id="btnCmpExp" type="button">Exportar para Excel</button>
+      </div>
+      <span class="muted" id="cmpInfo" role="status" style="display:block;margin:8px 0"></span>
+      <div class="notes-box"><table id="cmpTbl"><thead></thead><tbody></tbody></table></div>
+    </details>
     <datalist id="dl-acao"></datalist><datalist id="dl-dono"></datalist>
   </section>
 
@@ -791,7 +811,127 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
         `<td class="l" title="${esc(hist ? 'Histórico:\n' + hist : 'Sem histórico')}">${brDate((a.atualizadoEm || '').slice(0, 10))}${hist ? ' · ' + (a.historico.length) + ' ant.' : ''}</td>` +
         `<td><button class="small" data-arq="${ativa(a) ? 1 : 0}" ${at}>${ativa(a) ? 'Arquivar' : 'Reabrir'}</button></td></tr>`;
     }).join('') : `<tr><td class="l" colspan="9">${all.length ? 'Nenhuma anotação com esses filtros.' : 'Nenhuma anotação ainda.'}</td></tr>`;
+    if ($('cmpBox').open) renderCmp();
   }
+  // ---------- comparar anotações entre críticos ----------
+  // Uma anotação tem versões: cada item do histórico vale a partir de "em"; a atual vale a partir de atualizadoEm.
+  // A anotação de um crítico é a última versão que já valia na data dele.
+  const normCod = c => { c = String(c == null ? '' : c).trim().replace(/\.0+$/, ''); return /^\d+$/.test(c) && c.length < 6 ? c.padStart(6, '0') : c; };
+  function versoes(a) {
+    const v = (a.historico || []).map(h => ({ acao: h.acao || '', obs: h.obs || '', dono: h.dono || '', data: h.data || '', status: h.status || 'aberta', de: (h.em || '').slice(0, 10) }));
+    const de = (a.atualizadoEm || '').slice(0, 10);
+    const atual = { acao: a.acao || '', obs: a.obs || '', dono: a.dono || '', data: a.data || '', status: a.status || 'aberta', de };
+    // Importadas da planilha como arquivadas estavam abertas no último crítico em que apareceram.
+    if (a.origem && atual.status === 'arquivada' && !(a.historico || []).some(h => h.status)) {
+      v.push(Object.assign({}, atual, { status: 'aberta' }));
+      const d = new Date(de + 'T12:00:00'); d.setDate(d.getDate() + 1);
+      v.push(Object.assign({}, atual, { de: d.toISOString().slice(0, 10) }));
+    } else v.push(atual);
+    return v.filter(x => x.de).sort((x, y) => x.de.localeCompare(y.de));
+  }
+  function versaoEm(a, dia) { let r = null; for (const x of versoes(a)) if (x.de <= dia) r = x; return r; }
+  const notaTxt = x => !x ? '' : [x.acao, x.obs, x.dono, x.data ? brDate(x.data) : ''].filter(Boolean).join(' · ') + (x.status === 'arquivada' ? ' (arquivada)' : '');
+  const notaIgual = (x, y) => !!x && !!y && x.acao === y.acao && x.obs === y.obs && x.dono === y.dono && x.data === y.data && x.status === y.status;
+  S.snapCache = {};
+  async function snapDe(id) {
+    if (S.viewData && S.viewData.data === id && S.viewData.linhas) return S.viewData;
+    if (S.snapCache[id]) return S.snapCache[id];
+    const ex = S.execucoes.find(x => x.id === id); if (!ex) return null;
+    const snap = (S.localSnaps && S.localSnaps[id]) || await fetchAsset(ex.assetId);
+    S.snapCache = { [id]: snap, ...Object.fromEntries(Object.entries(S.snapCache).slice(0, 2)) };
+    return snap;
+  }
+  function mapaNum(snap) {
+    const m = new Map(); if (!snap || !snap.linhas) return m;
+    const ix = k => KEYS.indexOf(k), iE = ix('E'), iF = ix('F'), iH = ix('H'), iI = ix('I'), iO = ix('O'), iV = ix('V');
+    for (const r of snap.linhas) m.set(akey(r[iE], normCod(r[iF])), { I: r[iI], O: r[iO], V: r[iV], H: String(r[iH] || '').trim() });
+    return m;
+  }
+  function cmpSelects() {
+    const lista = S.execucoes.filter(x => x.completo);
+    const opt = (x, sel) => `<option value="${x.id}"${x.id === sel ? ' selected' : ''}>${brDate(x.data)}</option>`;
+    const a = $('cmp-a').value || (S.view && lista.some(x => x.id === S.view) ? S.view : (lista[0] || {}).id);
+    $('cmp-a').innerHTML = lista.map(x => opt(x, a)).join('');
+    const ant = lista.filter(x => x.id < a);
+    const b0 = $('cmp-b').value && $('cmp-b').value < a ? $('cmp-b').value : (ant[0] || {}).id;
+    $('cmp-b').innerHTML = ant.length ? ant.map(x => opt(x, b0)).join('') : '<option value="">Sem crítico anterior</option>';
+  }
+  let cmpLinhas = [];
+  async function renderCmp() {
+    if (!$('cmpBox').open) return;
+    cmpSelects();
+    const da = $('cmp-a').value, db = $('cmp-b').value;
+    if (!da) { $('cmpInfo').textContent = 'Nenhum crítico salvo ainda.'; return; }
+    $('cmpInfo').textContent = 'Carregando os críticos…';
+    let A, B;
+    try { [A, B] = await Promise.all([snapDe(da), db ? snapDe(db) : null]); } catch (e) { $('cmpInfo').textContent = 'Não consegui abrir os críticos: ' + (e.message || e); return; }
+    const nA = mapaNum(A), nB = mapaNum(B);
+    const linhas = [];
+    for (const a of S.anot.values()) {
+      const cod = normCod(a.codigo), k = akey(a.loja, cod);
+      const va = versaoEm(a, da), vb = db ? versaoEm(a, db) : null;
+      const fora = x => !x || x.status === 'arquivada';
+      if (fora(va) && fora(vb)) continue;
+      let sit = 'igual';
+      if (!vb || vb.status === 'arquivada') sit = va && va.status !== 'arquivada' ? 'nova' : 'igual';
+      else if (!va) sit = 'saiu';
+      else if (va.status === 'arquivada') sit = 'arquivada';
+      else if (!notaIgual(va, vb)) sit = 'mudou';
+      const xa = nA.get(k), xb = nB.get(k);
+      linhas.push({ loja: a.loja, cod, desc: a.descricao || (xa && xa.H) || (xb && xb.H) || '', sit, va, vb, xa, xb });
+    }
+    const ord = { nova: 0, mudou: 1, arquivada: 2, saiu: 3, igual: 4 };
+    linhas.sort((x, y) => ord[x.sit] - ord[y.sit] || x.loja.localeCompare(y.loja, 'pt-BR') || x.cod.localeCompare(y.cod));
+    cmpLinhas = linhas;
+    fillSel('cmp-loja', [...new Set(linhas.map(l => l.loja))].sort((a, b) => a.localeCompare(b, 'pt-BR')), 'Todas');
+    pintarCmp();
+  }
+  const SIT = { nova: 'Nova', mudou: 'Mudou', arquivada: 'Arquivada', saiu: 'Saiu', igual: 'Igual' };
+  function cmpFiltradas() {
+    const lj = $('cmp-loja').value, q = $('cmp-q').value.trim().toUpperCase(), mud = $('cmp-mud').checked;
+    return cmpLinhas.filter(l => (!lj || l.loja === lj) && (!q || l.cod.includes(q) || l.desc.toUpperCase().includes(q)) && (!mud || l.sit !== 'igual'));
+  }
+  function pintarCmp() {
+    const da = $('cmp-a').value, db = $('cmp-b').value;
+    const L = cmpFiltradas();
+    const cont = Object.keys(SIT).map(k => [k, cmpLinhas.filter(l => l.sit === k).length]).filter(x => x[1]).map(([k, n]) => n + ' ' + SIT[k].toLowerCase()).join(' · ');
+    $('cmpInfo').textContent = brDate(da) + (db ? ' comparado com ' + brDate(db) : '') + ': ' + (cont || 'nenhuma anotação') + '.';
+    const bd = db ? brDate(db).slice(0, 5) : 'anterior', ba = brDate(da).slice(0, 5);
+    $('cmpTbl').tHead.innerHTML = `<tr><th class="l">Loja</th><th class="l">Código</th><th class="l">Descrição</th><th class="l">Situação</th><th class="l">Anotação ${bd}</th><th class="l">Anotação ${ba}</th><th>Físico ${bd} → ${ba}</th><th>Dias ${bd} → ${ba}</th><th>Venda nec. R$ ${bd} → ${ba}</th></tr>`;
+    const seta = (b, a, f, menorMelhor) => {
+      if (a == null && b == null) return '';
+      const t = (b == null ? '—' : f(b)) + ' → ' + (a == null ? '—' : f(a));
+      if (a == null || b == null || a === b) return t;
+      return `<span class="${(a < b) === menorMelhor ? 'down' : 'up'}">${t}</span>`;
+    };
+    const dias = v => v >= 9999 ? 'sem venda' : fmt1.format(v);
+    $('cmpTbl').tBodies[0].innerHTML = L.length ? L.map(l => {
+      const mud = l.sit !== 'igual' ? ' mud' : '';
+      return `<tr><td class="l">${esc(l.loja)}</td><td class="l">${esc(l.cod)}</td><td class="l desc" title="${esc(l.desc)}">${esc(l.desc)}</td>` +
+        `<td class="l"><span class="sit ${l.sit}">${SIT[l.sit]}</span></td>` +
+        `<td class="nota">${esc(notaTxt(l.vb)) || '<span class="muted">—</span>'}</td><td class="nota${mud}">${esc(notaTxt(l.va)) || '<span class="muted">—</span>'}</td>` +
+        `<td>${seta(l.xb && l.xb.I, l.xa && l.xa.I, v => fmtI.format(v), true)}</td><td>${seta(l.xb && l.xb.O, l.xa && l.xa.O, dias, true)}</td><td>${seta(l.xb && l.xb.V, l.xa && l.xa.V, v => fmtR.format(v), true)}</td></tr>`;
+    }).join('') : `<tr><td class="l" colspan="9">${cmpLinhas.length ? 'Nada com esses filtros.' : 'Nenhuma anotação nesses críticos.'}</td></tr>`;
+  }
+  async function exportCmp(btn) {
+    btn.disabled = true;
+    try {
+      const da = $('cmp-a').value, db = $('cmp-b').value, bd = db ? brDate(db).slice(0, 5) : 'anterior', ba = brDate(da).slice(0, 5);
+      const t = 'txtL';
+      const cols = [{ t: 'Loja', w: 22, s: t }, { t: 'Código', w: 10, s: t }, { t: 'Descrição', w: 40, s: t }, { t: 'Situação', w: 11, s: t },
+        { t: 'Ação ' + bd, w: 18, s: t }, { t: 'Observação ' + bd, w: 30, s: t }, { t: 'Dono ' + bd, w: 12, s: t }, { t: 'Data ' + bd, w: 11, s: t },
+        { t: 'Ação ' + ba, w: 18, s: t }, { t: 'Observação ' + ba, w: 30, s: t }, { t: 'Dono ' + ba, w: 12, s: t }, { t: 'Data ' + ba, w: 11, s: t },
+        { t: 'Físico ' + bd, w: 11, s: 'int' }, { t: 'Físico ' + ba, w: 11, s: 'int' }, { t: 'Dias ' + bd, w: 10, s: 'dec1' }, { t: 'Dias ' + ba, w: 10, s: 'dec1' },
+        { t: 'Venda nec. R$ ' + bd, w: 15, s: 'rs2' }, { t: 'Venda nec. R$ ' + ba, w: 15, s: 'rs2' }];
+      const n = (x, f) => x ? (f === 'O' && x.O >= 9999 ? 'sem venda' : x[f]) : null;
+      const nt = x => x ? [x.acao, x.obs, x.dono, x.data ? brDate(x.data) : ''] : ['', '', '', ''];
+      const linhas = cmpFiltradas().map(l => [l.loja, l.cod, l.desc, SIT[l.sit], ...nt(l.vb), ...nt(l.va), n(l.xb, 'I'), n(l.xa, 'I'), n(l.xb, 'O'), n(l.xa, 'O'), n(l.xb, 'V'), n(l.xa, 'V')]);
+      const bytes = E.gerarXlsxTabela('Anotacoes ' + ba.replace('/', '_') + ' x ' + bd.replace('/', '_'), 'Anotações ' + brDate(da) + ' comparadas com ' + (db ? brDate(db) : '—'), cols, linhas);
+      await S.downloads.save({ filename: 'Anotacoes_' + ba.replace('/', '_') + '_x_' + bd.replace('/', '_') + '.xlsx', data: new Blob([bytes]) });
+    } catch (e) { $('cmpInfo').textContent = 'Não consegui exportar: ' + (e.message || e); }
+    btn.disabled = false;
+  }
+
   function renderPontos() {
     $('pontos').innerHTML = (S.pontos || []).map((p, i) => `<li><span class="txt" data-i="${i}" tabindex="0" title="Clique para editar">${esc(p.texto)}</span><button class="small" data-del="${i}" aria-label="Remover ponto">Remover</button></li>`).join('') || '<li class="muted">Nenhum ponto anotado.</li>';
   }
@@ -1018,6 +1158,12 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
   $('btnMore').addEventListener('click', () => { S.shown += 200; renderTable(); });
   ['fl-anot'].forEach(id => $(id).addEventListener('change', () => { S.shown = 200; renderTable(); }));
   ['nt-loja', 'nt-dono', 'nt-arq'].forEach(id => $(id).addEventListener('change', renderNotes));
+  $('cmpBox').addEventListener('toggle', renderCmp);
+  $('cmp-a').addEventListener('change', () => { $('cmp-b').value = ''; renderCmp(); });
+  $('cmp-b').addEventListener('change', renderCmp);
+  ['cmp-loja', 'cmp-mud'].forEach(id => $(id).addEventListener('change', pintarCmp));
+  $('cmp-q').addEventListener('input', pintarCmp);
+  $('btnCmpExp').addEventListener('click', e => exportCmp(e.currentTarget));
   const editClick = e => { const td = e.target.closest('td.note'); if (td && !e.target.closest('input')) startEdit(td); };
   $('tbl').addEventListener('click', editClick, true);
   $('notesTbl').addEventListener('click', editClick);
