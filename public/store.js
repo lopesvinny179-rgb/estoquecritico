@@ -102,6 +102,14 @@
       const { error } = await sb.auth.signInWithOtp({ email, options: { emailRedirectTo: location.origin + location.pathname } });
       if (error) throw falha(error);
     },
+    async entrarSenha(email, senha) {
+      const { error } = await sb.auth.signInWithPassword({ email: String(email || '').trim().toLowerCase(), password: senha });
+      if (error) throw falha(error);
+    },
+    async trocarSenha(nova) {
+      const { error } = await sb.auth.updateUser({ password: nova });
+      if (error) throw falha(error);
+    },
     async sair() { await sb.auth.signOut(); location.reload(); },
     aoMudar(fn) { if (!sb.erro) sb.auth.onAuthStateChange((ev, s) => fn(ev, s)); }
   };
