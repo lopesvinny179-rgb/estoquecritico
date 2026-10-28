@@ -97,6 +97,9 @@ details.cols summary { cursor: pointer; font-weight: 600; font-size: 13px; }
 .col-list button { padding: 2px 8px; font-size: 12px; }
 td.note { text-align: left; white-space: normal; min-width: 120px; max-width: 260px; cursor: text; background: color-mix(in srgb, var(--accent-soft) 45%, transparent); }
 td.note.empty { color: var(--muted); }
+#projTbl input, #projTbl select { font: inherit; padding: 4px 6px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); }
+#projTbl input.prod { width: 260px; } #projTbl input.qtd { width: 100px; text-align: right; } #projTbl input.obs { width: 180px; } #projTbl select { max-width: 220px; }
+#projTbl td.res { font-weight: 700; }
 td.note.empty::before { content: "+"; opacity: .45; }
 td.note:hover { outline: 1px dashed var(--accent); outline-offset: -2px; }
 td.note.saving { opacity: .55; }
@@ -238,6 +241,19 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
     <div class="more"><span class="muted num" id="countInfo"></span><button class="small" id="btnMore" hidden>Mostrar mais 200</button><button class="small" id="btnExport2" disabled>Exportar esta visão para Excel</button></div>
   </section>
 
+  <section class="panel" aria-labelledby="hProj" id="projPanel">
+    <div class="panel-head">
+      <h2 id="hProj">Cálculo p/ projeções de estoque</h2>
+      <span class="muted" id="projInfo">Escolha o produto e a loja, informe a quantidade (negativa para tirar, positiva para colocar) e veja os dias de estoque projetados. Fórmula: (Qtde + Físico) ÷ Vendas s/ eventos × 30.</span>
+    </div>
+    <div class="tablebox"><table id="projTbl">
+      <thead><tr><th class="l">Produto</th><th class="l">Loja</th><th>Qtde (unidades)</th><th>Físico</th><th>Vendas s/ ev.</th><th>Dias atuais</th><th>Dias de estoque projetado</th><th class="l">Obs.</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+    <datalist id="dl-prod"></datalist>
+    <div class="run-row"><button id="btnProjAdd" type="button">Adicionar linha</button><button id="btnProjExp" type="button">Exportar para Excel</button><span class="muted" id="projStatus" role="status"></span></div>
+  </section>
+
   <section class="panel" aria-labelledby="hMes" id="mesPanel">
     <div class="panel-head">
       <h2 id="hMes">Consolidado do mês</h2>
@@ -344,7 +360,7 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
     estado: null, cfg: JSON.parse(JSON.stringify(E.DEFAULT_CFG)),
     depara: null, top20: null, execucoes: [],
     view: null, viewData: null, lastXlsx: null, rows: [], shown: 200,
-    sort: { k: 'J', dir: -1 }, running: false, local: {}, anot: new Map(), pontos: [], mensal: {}, mesRodando: false
+    sort: { k: 'J', dir: -1 }, running: false, local: {}, anot: new Map(), pontos: [], proj: [], mensal: {}, mesRodando: false
   };
 
   // ---------- log/progresso ----------
@@ -628,7 +644,7 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
     fillSel('fl-reg', uniq('B'), 'Todas'); fillSel('fl-loja', uniq('E'), 'Todas'); fillSel('fl-grupo', uniq('G').map(s => s.trim()).filter((v, i, a) => a.indexOf(v) === i), 'Todos');
     $('btnDown').disabled = !S.rows.length; $('btnExport').disabled = !S.rows.length; $('btnExport2').disabled = !S.rows.length;
     S.sort = { k: 'J', dir: -1 }; // sempre classificado por R$ Tabela, do maior para o menor
-    S.shown = 200; renderTable(); renderHistory();
+    S.shown = 200; renderTable(); renderHistory(); renderProj();
   }
   function fillSel(id, vals, all) { const sel = $(id); const cur = sel.value; sel.innerHTML = `<option value="">${all}</option>` + vals.map(v => `<option>${esc(v)}</option>`).join(''); if (vals.includes(cur)) sel.value = cur; }
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -722,6 +738,8 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
     for (const d of snap.docs) { const a = d.data(); S.anot.set(akey(a.loja, a.codigo), Object.assign({ _id: d.id }, a)); }
     const p = await S.db.doc('reuniao/pontos').get();
     S.pontos = p.exists ? (p.data().itens || []) : [];
+    const pj = await S.db.doc('reuniao/projecoes').get();
+    S.proj = pj.exists ? (pj.data().itens || []) : [];
   }
   function fillDatalists() {
     const acoes = new Set(), donos = new Set();
@@ -781,6 +799,85 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
     try { if (!S.db) throw new Error('armazenamento indisponível'); await S.db.doc('reuniao/pontos').set({ itens: S.pontos, atualizadoEm: new Date().toISOString() }); }
     catch (e) { log('Não consegui salvar os pontos: ' + (e.message || e.code), 'err'); }
     renderPontos();
+  }
+
+  // ---------- projeções de estoque ----------
+  // Cada linha: { codigo, escopo: '' (todas) | 'R:<regional>' | 'L:<loja>', qtde, obs }. Recalcula sobre o crítico aberto.
+  const numBR = t => { t = String(t == null ? '' : t).trim(); if (!t) return null; t = t.replace(/\s/g, ''); if (/,/.test(t)) t = t.replace(/\./g, '').replace(',', '.'); else if (/^-?\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, ''); const n = Number(t); return isFinite(n) ? n : null; };
+  function projCalc(it) {
+    const ix = k => KEYS.indexOf(k);
+    const iF = ix('F'), iE = ix('E'), iB = ix('B'), iI = ix('I'), iL = ix('L'), iH = ix('H');
+    const cod = String(it.codigo || '').trim(); if (!cod) return null;
+    let I = 0, L = 0, n = 0, desc = '';
+    for (const r of S.rows) {
+      if (String(r[iF]) !== cod) continue;
+      if (it.escopo && it.escopo.startsWith('L:') && r[iE] !== it.escopo.slice(2)) continue;
+      if (it.escopo && it.escopo.startsWith('R:') && String(r[iB]) !== it.escopo.slice(2)) continue;
+      I += +r[iI] || 0; L += +r[iL] || 0; n++; desc = desc || String(r[iH] || '').trim();
+    }
+    const q = numBR(it.qtde);
+    return { n, I, L, desc, atual: L > 0 ? I / L * 30 : null, proj: q == null ? undefined : (L > 0 ? (q + I) / L * 30 : null) };
+  }
+  function projOpts(sel) {
+    const ix = k => KEYS.indexOf(k);
+    const lojas = [...new Set(S.rows.map(r => r[ix('E')]))].filter(Boolean).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    const regs = [...new Set(S.rows.map(r => String(r[ix('B')] || '')))].filter(Boolean).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    const o = (v, t) => `<option value="${esc(v)}"${v === sel ? ' selected' : ''}>${esc(t)}</option>`;
+    return o('', 'Todas as lojas') + (regs.length ? '<optgroup label="Regional">' + regs.map(r => o('R:' + r, 'Regional ' + r)).join('') + '</optgroup>' : '') + '<optgroup label="Loja">' + lojas.map(l => o('L:' + l, l)).join('') + '</optgroup>';
+  }
+  const fmtDias = v => v === undefined ? '' : v == null ? 'sem venda' : fmt1.format(v);
+  function projCelulas(it) {
+    const c = projCalc(it), ok = c && c.n;
+    const desc = !it.codigo ? '' : ok ? esc(c.desc) : 'não está no crítico';
+    return { desc, vals: ok ? [fmtI.format(c.I), fmtI.format(c.L), fmtDias(c.atual), fmtDias(c.proj)] : ['', '', '', ''] };
+  }
+  function projLinha(it, i) {
+    const c = projCelulas(it);
+    return `<tr data-i="${i}"><td class="l"><input class="prod" list="dl-prod" data-f="codigo" value="${esc(it.codigo || '')}" placeholder="Código ou descrição" aria-label="Produto"><div class="muted desc" style="font-size:11.5px;white-space:normal">${c.desc}</div></td>` +
+      `<td class="l"><select data-f="escopo" aria-label="Loja">${projOpts(it.escopo || '')}</select></td>` +
+      `<td><input class="qtd" data-f="qtde" inputmode="decimal" value="${esc(it.qtde == null ? '' : it.qtde)}" placeholder="-840" aria-label="Quantidade em unidades"></td>` +
+      c.vals.map((v, k) => `<td class="${k === 3 ? 'res' : ''}">${v}</td>`).join('') +
+      `<td class="l"><input class="obs" data-f="obs" value="${esc(it.obs || '')}" aria-label="Observação"></td><td><button class="small" data-del="${i}" type="button" aria-label="Remover linha">Remover</button></td></tr>`;
+  }
+  function renderProj() {
+    if (!S.proj.length) S.proj = [{ codigo: '', escopo: '', qtde: '', obs: '' }];
+    $('projTbl').tBodies[0].innerHTML = S.proj.map(projLinha).join('');
+    const ix = k => KEYS.indexOf(k), seen = new Set(), opts = [];
+    for (const r of S.rows) { const f = String(r[ix('F')]); if (seen.has(f)) continue; seen.add(f); opts.push(`<option value="${esc(f)}">${esc(f + ' · ' + String(r[ix('H')] || '').trim())}</option>`); }
+    $('dl-prod').innerHTML = opts.join('');
+    $('projStatus').textContent = S.viewData ? 'Calculado sobre o ' + S.viewData.nome + '.' : 'Abra um crítico para calcular.';
+  }
+  let projT;
+  function saveProj() {
+    clearTimeout(projT);
+    projT = setTimeout(async () => {
+      try { if (!S.db) throw new Error('armazenamento indisponível'); await S.db.doc('reuniao/projecoes').set({ itens: S.proj.filter(x => x.codigo || x.qtde || x.obs), atualizadoEm: new Date().toISOString() }); }
+      catch (e) { $('projStatus').textContent = 'Não consegui salvar: ' + (e.message || e.code); }
+    }, 600);
+  }
+  function projMudou(e) {
+    const el = e.target.closest('[data-f]'); if (!el) return;
+    const tr = el.closest('tr'), i = +tr.dataset.i, it = S.proj[i]; if (!it) return;
+    let v = el.value;
+    if (el.dataset.f === 'codigo') { const m = /^\s*(\d+)\s*·/.exec(v) || /^\s*(\d+)\s*$/.exec(v); if (m) v = m[1].length < 6 ? m[1].padStart(6, '0') : m[1]; if (e.type === 'change' && v !== el.value) el.value = v; }
+    it[el.dataset.f] = v;
+    // Atualiza só os números da linha, sem recriar os campos (não perde o foco nem dispara eventos de novo).
+    const c = projCelulas(it);
+    tr.querySelector('.desc').innerHTML = c.desc;
+    c.vals.forEach((t, k) => { tr.cells[3 + k].textContent = t; });
+    saveProj();
+  }
+  async function exportProj(btn) {
+    btn.disabled = true;
+    try {
+      const nomeLoja = esc => !esc ? 'Todas as lojas' : esc.startsWith('R:') ? 'Regional ' + esc.slice(2) : esc.slice(2);
+      const linhas = S.proj.filter(x => x.codigo).map(it => { const c = projCalc(it) || {}; const q = numBR(it.qtde); return [it.codigo, c.desc || '', nomeLoja(it.escopo), q, c.I, c.L, c.atual == null ? 'sem venda' : c.atual, c.proj === undefined ? null : c.proj == null ? 'sem venda' : c.proj, it.obs || '']; });
+      const cols = [{ t: 'Código', w: 10, s: 'txtL' }, { t: 'Descrição', w: 42, s: 'txtL' }, { t: 'Loja', w: 24, s: 'txtL' }, { t: 'Qtde (unidades)', w: 14, s: 'int' }, { t: 'Físico', w: 12, s: 'int' }, { t: 'Vendas s/ ev.', w: 12, s: 'int' }, { t: 'Dias atuais', w: 12, s: 'dec1' }, { t: 'Dias de estoque projetado', w: 16, s: 'dec1' }, { t: 'Obs.', w: 30, s: 'txtL' }];
+      const d = S.viewData ? S.viewData.data : isoToday();
+      const bytes = E.gerarXlsxTabela('Projecoes ' + d.slice(8, 10) + '_' + d.slice(5, 7), 'Cálculo p/ projeções de estoque · ' + (S.viewData ? S.viewData.nome : ''), cols, linhas);
+      await S.downloads.save({ filename: 'Projecoes_estoque_' + d.slice(8, 10) + '_' + d.slice(5, 7) + '.xlsx', data: new Blob([bytes]) });
+    } catch (e) { $('projStatus').textContent = 'Não consegui exportar: ' + (e.message || e); }
+    btn.disabled = false;
   }
 
   function filtered() {
@@ -906,6 +1003,11 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
   $('r-top20').addEventListener('change', e => e.target.files[0] && trocarRef(e.target.files[0], 'top20'));
   $('r-all').addEventListener('change', e => e.target.files[0] && trocarRef(e.target.files[0], 'all'));
   $('btnBackup').addEventListener('click', baixarBackup);
+  $('projTbl').addEventListener('input', projMudou);
+  $('projTbl').addEventListener('change', projMudou);
+  $('projTbl').addEventListener('click', e => { const b = e.target.closest('button[data-del]'); if (!b) return; S.proj.splice(+b.dataset.del, 1); renderProj(); saveProj(); });
+  $('btnProjAdd').addEventListener('click', () => { S.proj.push({ codigo: '', escopo: '', qtde: '', obs: '' }); renderProj(); const t = $('projTbl').tBodies[0].lastElementChild; t && t.querySelector('input').focus(); });
+  $('btnProjExp').addEventListener('click', e => exportProj(e.currentTarget));
   $('btnMes').addEventListener('click', () => $('mesSel').value && consolidarMes($('mesSel').value, false));
   $('mesLista').addEventListener('click', e => { const b = e.target.closest('button[data-mes]'); if (b) consolidarMes(b.dataset.mes, true); });
   $('r-backup').addEventListener('change', e => { const f = e.target.files[0]; e.target.value = ''; if (f) restaurarBackup(f); });
@@ -1018,7 +1120,7 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
         mensal.push({ id: mes, doc, arquivos });
       }
       const b = { tipo: 'estoque-critico-backup', v: 1, em: new Date().toISOString(), estado: S.estado || {}, depara: S.depara, top20: S.top20, execucoes, mensal,
-        anotacoes: an.docs.map(d => ({ id: d.id, data: d.data() })), pontos: pontos.exists ? pontos.data() : { itens: [] } };
+        anotacoes: an.docs.map(d => ({ id: d.id, data: d.data() })), pontos: pontos.exists ? pontos.data() : { itens: [] }, projecoes: { itens: S.proj.filter(x => x.codigo || x.qtde || x.obs) } };
       await S.downloads.save({ filename: 'estoque-critico-backup-' + isoToday() + '.json', data: new Blob([JSON.stringify(b)], { type: 'application/json' }) });
       st.textContent = 'Backup baixado.';
     } catch (err) { st.textContent = 'Não consegui gerar o backup: ' + err.message; }
@@ -1043,6 +1145,7 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
       n = 0;
       for (const a of b.anotacoes || []) { if (++n % 20 === 0) st.textContent = 'Salvando anotações… ' + n + ' de ' + b.anotacoes.length; await S.db.doc('anotacoes/' + a.id).set(a.data); }
       if (b.pontos) await S.db.doc('reuniao/pontos').set(b.pontos);
+      if (b.projecoes) await S.db.doc('reuniao/projecoes').set(b.projecoes);
       for (const m of b.mensal || []) {
         st.textContent = 'Salvando o consolidado de ' + nomeMes(m.id) + '…';
         const doc = JSON.parse(JSON.stringify(m.doc));
@@ -1073,7 +1176,7 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
       if (S.estado.depara && S.estado.depara.id) jobs.push(fetchAsset(S.estado.depara.id).then(r => { S.depara = r; }));
       if (S.estado.top20 && S.estado.top20.id) jobs.push(fetchAsset(S.estado.top20.id).then(r => { S.top20 = r; }));
       await Promise.all(jobs);
-      renderRefs(); fillDatalists(); renderNotes(); renderPontos();
+      renderRefs(); fillDatalists(); renderNotes(); renderPontos(); renderProj();
       const last = S.execucoes.find(x => x.completo);
       if (last) await openExecucao(last.id);
       else $('subtitle').textContent = 'Nenhum crítico salvo ainda.';
