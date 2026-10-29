@@ -154,6 +154,8 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
 .userbar { display: flex; gap: 10px; align-items: center; font-size: 12.5px; color: var(--muted); justify-content: flex-end; flex-wrap: wrap; }
 [hidden] { display: none !important; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+.logo { display: block; margin: 0 auto; width: min(300px, 80%); height: auto; border-radius: 12px; }
+.gate-card .logo { width: min(240px, 100%); margin-bottom: 4px; }
 .assinatura { text-align: center; color: var(--muted); font-size: 12.5px; padding: 18px 16px 26px; }
 .assinatura small { font-size: 7px; opacity: .65; }
 </style>
@@ -161,6 +163,7 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
 <body>
 <div class="gate" id="gate">
   <form class="gate-card" id="gateForm">
+    <img class="logo" src="logo.jpg" alt="Armazém da Cerveja" width="640" height="292">
     <span class="eyebrow">Compras · Armazém da Cerveja</span>
     <h1>Estoque Crítico</h1>
     <span class="muted" id="gateMsg">Entre com o seu e-mail da empresa e a senha. Sem senha, mandamos um link de acesso por e-mail.</span>
@@ -172,6 +175,7 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
 </div>
 <div class="wrap" id="app" hidden>
   <div class="userbar"><span id="userEmail"></span><button class="small" id="btnSenha" type="button">Trocar senha</button><button class="small" id="btnSair" type="button">Sair</button></div>
+  <img class="logo" src="logo.jpg" alt="Armazém da Cerveja" width="640" height="292">
   <header class="top">
     <div class="title">
       <span class="eyebrow">Compras · Armazém da Cerveja</span>
