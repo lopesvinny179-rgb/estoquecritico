@@ -177,13 +177,20 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
 .dash-top { width: 100%; border-collapse: collapse; font-size: 12.5px; }
 .dash-top td, .dash-top th { padding: 5px 6px; border-bottom: 1px solid var(--line); text-align: left; white-space: normal; position: static; }
 .dash-top td.n, .dash-top th.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.modos { display: flex; justify-content: center; gap: 0; }
-.modos button { border-radius: 0; min-width: 130px; }
-.modos button:first-child { border-radius: 8px 0 0 8px; }
-.modos button:last-child { border-radius: 0 8px 8px 0; margin-left: -1px; }
-.modos button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
-#app:not(.modo-dash) #dashPanel { display: none; }
-#app.modo-dash > :not(.userbar):not(.logo):not(header):not(.modos):not(#dashPanel) { display: none; }
+.abas { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; border-bottom: 1px solid var(--line); padding-bottom: 10px; }
+.abas button { border-radius: 999px; padding: 7px 14px; }
+.abas button[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+#app > section[data-aba]:not(.aba-on) { display: none; }
+.mini-tools { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+.mini-wrap { overflow: auto; max-height: 560px; border: 1px solid var(--line); border-radius: var(--r); }
+.mini { width: 100%; border-collapse: collapse; font-size: 11px; line-height: 1.3; }
+.mini th, .mini td { padding: 3px 6px; border-bottom: 1px solid var(--line); white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; }
+.mini th { position: sticky; top: 0; background: var(--surface-2); font-weight: 600; z-index: 1; }
+.mini th.l, .mini td.l { text-align: left; }
+.mini td.desc { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+.mini td.an { max-width: 180px; overflow: hidden; text-overflow: ellipsis; color: var(--muted); }
+.mini tr.crit td.dias { color: var(--bad); font-weight: 600; }
+.mini tbody tr:hover td { background: var(--accent-soft); }
 .logo { display: block; margin: 0 auto; width: min(300px, 80%); height: auto; border-radius: 12px; }
 .gate-card .logo { width: min(240px, 100%); margin-bottom: 4px; }
 .assinatura { text-align: center; color: var(--muted); font-size: 12.5px; padding: 18px 16px 26px; }
@@ -215,12 +222,17 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
     <div class="refs" id="refChips"></div>
   </header>
 
-  <div class="modos" role="group" aria-label="Visualização">
-    <button type="button" id="modoCrit" aria-pressed="true">Crítico</button>
-    <button type="button" id="modoDash" aria-pressed="false">Dashboard</button>
-  </div>
+  <nav class="abas" role="tablist" aria-label="Páginas" id="abas">
+    <button type="button" role="tab" data-aba="critico">Crítico</button>
+    <button type="button" role="tab" data-aba="dash">Dashboard</button>
+    <button type="button" role="tab" data-aba="anot">Anotações</button>
+    <button type="button" role="tab" data-aba="ata">Ata da reunião</button>
+    <button type="button" role="tab" data-aba="proj">Projeções</button>
+    <button type="button" role="tab" data-aba="mes">Consolidado do mês</button>
+    <button type="button" role="tab" data-aba="refs">Referências</button>
+  </nav>
 
-  <section class="panel" aria-labelledby="hDash" id="dashPanel">
+  <section class="panel" aria-labelledby="hDash" id="dashPanel" data-aba="dash">
     <div class="panel-head">
       <h2 id="hDash">Dashboard</h2>
       <span class="muted" id="dashSub">Visão geral do crítico aberto.</span>
@@ -237,9 +249,20 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
       <div class="dash-card"><h3>Top 10 itens <small>maior venda necessária</small></h3><div style="overflow-x:auto"><table class="dash-top" id="dashTop"></table></div></div>
       <div class="dash-card"><h3>Anotações abertas <small>por dono</small></h3><div class="hb" id="dashDonos" role="list"></div></div>
     </div>
+    <div class="dash-card">
+      <h3>Planilha do crítico <small>principais colunas · ordenada por venda necessária</small></h3>
+      <div class="mini-tools">
+        <div class="field"><label for="mini-loja">Loja</label><select id="mini-loja"></select></div>
+        <div class="field"><label for="mini-busca">Buscar produto ou código</label><input type="search" id="mini-busca" placeholder="ex.: skol ou 000022"></div>
+        <label class="check"><input type="checkbox" id="mini-crit" checked> Só acima do alvo</label>
+        <span class="muted" id="mini-info"></span>
+      </div>
+      <div class="mini-wrap"><table class="mini" id="miniTbl"></table></div>
+      <div><button class="small" id="miniMais" type="button">Mostrar mais 100</button></div>
+    </div>
   </section>
 
-  <section class="panel" aria-labelledby="hUpd">
+  <section class="panel" aria-labelledby="hUpd" data-aba="critico">
     <div class="panel-head">
       <h2 id="hUpd">Atualizar o crítico</h2>
       <span class="muted">Solte os três arquivos do dia, confira as datas e clique em Executar.</span>
@@ -280,7 +303,7 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
     <ul class="log" id="log" aria-live="polite"></ul>
   </section>
 
-  <section class="panel" aria-labelledby="hRes" id="resPanel">
+  <section class="panel" aria-labelledby="hRes" id="resPanel" data-aba="critico">
     <div class="panel-head">
       <div style="display:grid;gap:4px">
         <span class="eyebrow" id="resEyebrow">Crítico</span>
@@ -312,7 +335,7 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
     <div class="more"><span class="muted num" id="countInfo"></span><button class="small" id="btnMore" hidden>Mostrar mais 200</button><button class="small" id="btnExport2" disabled>Exportar esta visão para Excel</button></div>
   </section>
 
-  <section class="panel" aria-labelledby="hProj" id="projPanel">
+  <section class="panel" aria-labelledby="hProj" id="projPanel" data-aba="proj">
     <div class="panel-head">
       <h2 id="hProj">Cálculo p/ projeções de estoque</h2>
       <span class="muted" id="projInfo">Escolha o produto e a loja, informe a quantidade (negativa para tirar, positiva para colocar) e veja os dias de estoque projetados. Fórmula: (Qtde + Físico) ÷ Vendas s/ eventos × 30.</span>
@@ -325,7 +348,7 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
     <div class="run-row"><button id="btnProjAdd" type="button">Adicionar linha</button><button id="btnProjExp" type="button">Exportar para Excel</button><span class="muted" id="projStatus" role="status"></span></div>
   </section>
 
-  <section class="panel" aria-labelledby="hMes" id="mesPanel">
+  <section class="panel" aria-labelledby="hMes" id="mesPanel" data-aba="mes">
     <div class="panel-head">
       <h2 id="hMes">Consolidado do mês</h2>
       <span class="muted">Todos os críticos de um mês num arquivo só, um por aba. Fica salvo aqui mesmo depois que os críticos do dia saem da lista.</span>
@@ -340,7 +363,7 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
     <div class="refs" id="mesLista"></div>
   </section>
 
-  <section class="panel" aria-labelledby="hNotes" id="notesPanel">
+  <section class="panel" aria-labelledby="hNotes" id="notesPanel" data-aba="anot">
     <div class="panel-head">
       <h2 id="hNotes">Anotações da reunião</h2>
       <span class="muted" id="notesInfo">Ação, observação, dono e data de cada item. Ficam salvas e passam de um crítico para o outro.</span>
@@ -378,7 +401,7 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
     <datalist id="dl-acao"></datalist><datalist id="dl-dono"></datalist>
   </section>
 
-  <section class="panel" aria-labelledby="hAta" id="ataPanel">
+  <section class="panel" aria-labelledby="hAta" id="ataPanel" data-aba="ata">
     <div class="panel-head">
       <h2 id="hAta">Ata da reunião</h2>
       <span class="muted">Registro de cada reunião do crítico: quem participou, o que foi discutido, o que foi decidido e as ações com dono e prazo. Salva sozinha.</span>
@@ -419,7 +442,7 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
     </div>
   </section>
 
-  <section class="panel" aria-labelledby="hRefs">
+  <section class="panel" aria-labelledby="hRefs" data-aba="refs">
     <div class="panel-head">
       <h2 id="hRefs">Referências fixas</h2>
       <span class="muted">Ficam salvas aqui. Troque só quando mudarem.</span>
@@ -804,7 +827,29 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
       (top.length ? top.map(r => `<tr><td>${esc(String(r[iE] || ''))}</td><td>${esc(String(r[iH] || '').trim())} <span class="muted">${esc(normCod(r[iF]))}</span></td><td class="n">${r[iO] >= 9999 ? 'sem venda' : fmtI.format(r[iO])}</td><td class="n">${fmtR.format(r[iV] || 0)}</td></tr>`).join('') : '<tr><td colspan="4" class="muted">Nenhum item acima do alvo.</td></tr>') + '</tbody>';
     // anotações por dono
     const dn = new Map(); for (const a of abertas) { const k = (a.dono || '').trim() || '(sem dono)'; dn.set(k, (dn.get(k) || 0) + 1); }
+    renderMini();
     barras($('dashDonos'), [...dn].map(([k, v]) => ({ k, v })).sort((a, b) => b.v - a.v).slice(0, 12), v => fmtI.format(v));
+  }
+  S.miniN = 100;
+  const MINI_COLS = [['B', 'Regional', 'l'], ['E', 'Loja', 'l'], ['F', 'Código', 'l'], ['H', 'Descrição', 'l desc'], ['I', 'Físico'], ['J', 'R$ Tabela', 'rs'], ['N', 'Vendas c/ ev.'], ['O', 'Dias', 'dias'], ['R', 'Est. máx'], ['T', 'Venda nec. un'], ['V', 'Venda nec. R$', 'rs']];
+  function renderMini() {
+    const snap = S.viewData; if (!snap || !snap.linhas) { $('miniTbl').innerHTML = ''; $('mini-info').textContent = ''; return; }
+    const ix = k => KEYS.indexOf(k), iE = ix('E'), iF = ix('F'), iH = ix('H'), iI = ix('I'), iO = ix('O'), iV = ix('V');
+    const W = (snap.params && snap.params.diasAlvo) || 30;
+    const lojas = [...new Set(snap.linhas.map(r => String(r[iE] || '')))].filter(Boolean).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    const sel = $('mini-loja'), cur = sel.value;
+    if (sel.options.length !== lojas.length + 1) { sel.innerHTML = '<option value="">Todas</option>' + lojas.map(l => `<option>${esc(l)}</option>`).join(''); sel.value = lojas.includes(cur) ? cur : ''; }
+    const lj = sel.value, so = $('mini-crit').checked, q = $('mini-busca').value.trim().toLowerCase();
+    const acima = r => r[iI] > 0 && r[iO] > W;
+    let L = snap.linhas.filter(r => (!lj || String(r[iE]) === lj) && (!so || acima(r)) && (!q || String(r[iH] || '').toLowerCase().includes(q) || normCod(r[iF]).includes(q.replace(/^0+/, '').padStart(6, '0')) || String(r[iF]).includes(q)));
+    L.sort((a, b) => (b[iV] || 0) - (a[iV] || 0));
+    const tot = L.length; L = L.slice(0, S.miniN);
+    const f = (k, v, t) => v == null || v === '' ? '' : t === 'rs' ? fmtR.format(v) : t === 'dias' ? (v >= 9999 ? 'sem venda' : fmtI.format(v)) : typeof v === 'number' ? fmtI.format(v) : esc(String(v).trim());
+    $('miniTbl').innerHTML = '<thead><tr>' + MINI_COLS.map(([, n, t]) => `<th class="${t && t.startsWith('l') ? 'l' : ''}">${n}</th>`).join('') + '<th class="l">Anotação</th></tr></thead><tbody>' +
+      L.map(r => { const a = anotDe(r); return `<tr class="${acima(r) ? 'crit' : ''}">` + MINI_COLS.map(([k, , t]) => `<td class="${t || ''}"${k === 'H' ? ` title="${esc(String(r[iH] || '').trim())}"` : ''}>${k === 'F' ? esc(normCod(r[iF])) : f(k, r[ix(k)], t)}</td>`).join('') + `<td class="l an"${a ? ` title="${esc(notaTxt(a))}"` : ''}>${a ? esc(notaTxt(a)) : ''}</td></tr>`; }).join('') +
+      (tot ? '' : '<tr><td class="l" colspan="12">Nenhum item com esses filtros.</td></tr>') + '</tbody>';
+    $('mini-info').textContent = fmtI.format(Math.min(tot, S.miniN)) + ' de ' + fmtI.format(tot) + ' itens';
+    $('miniMais').hidden = tot <= S.miniN;
   }
   (function dashTip() {
     const tip = document.createElement('div'); tip.className = 'dash-tip'; tip.hidden = true; document.body.appendChild(tip);
@@ -1465,15 +1510,19 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
   $('btnBackup').addEventListener('click', baixarBackup);
   $('btnAtaNova').addEventListener('click', novaAta);
   ['dash-por', 'dash-med'].forEach(id => $(id).addEventListener('change', renderDash));
-  function modoDash(on) {
-    $('app').classList.toggle('modo-dash', on);
-    $('modoDash').setAttribute('aria-pressed', on); $('modoCrit').setAttribute('aria-pressed', !on);
-    try { localStorage.setItem('critico.modo', on ? 'dash' : 'crit'); } catch (e) { }
-    if (on) renderDash();
+  function mostrarAba(nome) {
+    if (!document.querySelector('#app > section[data-aba="' + nome + '"]')) nome = 'critico';
+    document.querySelectorAll('#app > section[data-aba]').forEach(el => el.classList.toggle('aba-on', el.dataset.aba === nome));
+    document.querySelectorAll('#abas button').forEach(b => b.setAttribute('aria-selected', b.dataset.aba === nome));
+    try { localStorage.setItem('critico.aba', nome); } catch (e) { }
+    if (nome === 'dash') renderDash();
   }
-  $('modoDash').addEventListener('click', () => modoDash(true));
-  $('modoCrit').addEventListener('click', () => modoDash(false));
-  try { if (localStorage.getItem('critico.modo') === 'dash') modoDash(true); } catch (e) { }
+  $('abas').addEventListener('click', e => { const b = e.target.closest('button[data-aba]'); if (b) mostrarAba(b.dataset.aba); });
+  let abaIni = 'critico'; try { abaIni = localStorage.getItem('critico.aba') || 'critico'; } catch (e) { }
+  mostrarAba(abaIni);
+  ['mini-loja', 'mini-crit'].forEach(id => $(id).addEventListener('change', () => { S.miniN = 100; renderMini(); }));
+  $('mini-busca').addEventListener('input', () => { S.miniN = 100; renderMini(); });
+  $('miniMais').addEventListener('click', () => { S.miniN += 100; renderMini(); });
   $('ata-sel').addEventListener('change', () => { S.ata = S.atas.find(a => a.id === $('ata-sel').value) || null; $('ataStatus').textContent = ''; renderAta(); });
   $('ataForm').addEventListener('input', e => {
     const el = e.target; if (!S.ata || ataTravada()) return;
