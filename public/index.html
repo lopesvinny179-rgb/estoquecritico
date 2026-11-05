@@ -154,6 +154,29 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
 .userbar { display: flex; gap: 10px; align-items: center; font-size: 12.5px; color: var(--muted); justify-content: flex-end; flex-wrap: wrap; }
 [hidden] { display: none !important; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+.dash-ctrl { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+.dash-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 14px; }
+.dash-card { border: 1px solid var(--line); border-radius: var(--r); padding: 14px; display: grid; gap: 10px; align-content: start; min-width: 0; background: var(--surface); }
+.dash-card h3 small { font-family: var(--body); font-weight: 400; color: var(--muted); font-size: 12px; }
+.hb { display: grid; grid-template-columns: minmax(90px, 34%) 1fr auto; gap: 4px 10px; align-items: center; font-size: 12.5px; }
+.hb .row { display: contents; }
+.hb .lb { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hb .tr { height: 16px; display: flex; align-items: center; }
+.hb .br { height: 12px; background: var(--accent); border-radius: 0 4px 4px 0; min-width: 2px; }
+.hb .vl { font-variant-numeric: tabular-nums; color: var(--muted); text-align: right; white-space: nowrap; }
+.hb .row:hover .lb, .hb .row:hover .vl { color: var(--ink); }
+.hb .row:hover .br { background: var(--accent-strong); }
+.cols { display: flex; align-items: flex-end; gap: 2px; height: 170px; border-bottom: 1px solid var(--line); }
+.cols .c { flex: 1; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 3px; min-width: 0; }
+.cols .c b { font-weight: 400; font-size: 11px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.cols .c i { display: block; width: min(100%, 34px); background: var(--accent); border-radius: 4px 4px 0 0; min-height: 2px; }
+.cols .c:hover i { background: var(--accent-strong); }
+.cols-x { display: flex; gap: 2px; font-size: 11px; color: var(--muted); }
+.cols-x span { flex: 1; text-align: center; min-width: 0; overflow: hidden; white-space: nowrap; }
+.dash-tip { position: fixed; z-index: 50; pointer-events: none; background: var(--ink); color: var(--bg); font-size: 12px; padding: 6px 9px; border-radius: 6px; max-width: 280px; box-shadow: 0 4px 14px rgba(0,0,0,.18); }
+.dash-top { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.dash-top td, .dash-top th { padding: 5px 6px; border-bottom: 1px solid var(--line); text-align: left; white-space: normal; position: static; }
+.dash-top td.n, .dash-top th.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .logo { display: block; margin: 0 auto; width: min(300px, 80%); height: auto; border-radius: 12px; }
 .gate-card .logo { width: min(240px, 100%); margin-bottom: 4px; }
 .assinatura { text-align: center; color: var(--muted); font-size: 12.5px; padding: 18px 16px 26px; }
@@ -184,6 +207,25 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
     </div>
     <div class="refs" id="refChips"></div>
   </header>
+
+  <section class="panel" aria-labelledby="hDash" id="dashPanel">
+    <div class="panel-head">
+      <h2 id="hDash">Dashboard</h2>
+      <span class="muted" id="dashSub">Visão geral do crítico aberto.</span>
+    </div>
+    <div class="tiles" id="dashTiles"></div>
+    <div class="dash-ctrl">
+      <div class="field"><label for="dash-por">Ver por</label><select id="dash-por"><option value="E">Loja</option><option value="B">Regional</option><option value="G">Grupo</option></select></div>
+      <div class="field"><label for="dash-med">Medida</label><select id="dash-med"><option value="V">Venda necessária (R$)</option><option value="J">Estoque a preço de tabela (R$)</option><option value="crit">Itens acima do alvo</option><option value="dias">Dias de estoque</option></select></div>
+    </div>
+    <div class="dash-grid">
+      <div class="dash-card"><h3 id="dashBarT">Por loja</h3><div class="hb" id="dashBars" role="list"></div><span class="muted" id="dashBarMais"></span></div>
+      <div class="dash-card"><h3>Estoque a preço de tabela <small>por crítico</small></h3><div class="cols" id="dashEvoJ"></div><div class="cols-x" id="dashEvoJx"></div></div>
+      <div class="dash-card"><h3>Itens acima do alvo <small>por crítico</small></h3><div class="cols" id="dashEvoC"></div><div class="cols-x" id="dashEvoCx"></div></div>
+      <div class="dash-card"><h3>Top 10 itens <small>maior venda necessária</small></h3><div style="overflow-x:auto"><table class="dash-top" id="dashTop"></table></div></div>
+      <div class="dash-card"><h3>Anotações abertas <small>por dono</small></h3><div class="hb" id="dashDonos" role="list"></div></div>
+    </div>
+  </section>
 
   <section class="panel" aria-labelledby="hUpd">
     <div class="panel-head">
@@ -694,6 +736,74 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
     for (const r of L) { I += r[iI]; J += r[iJ]; N += r[iN]; if (r[iV] > 0) V += r[iV]; AH += r[iAH]; if (r[iI] > 0 && r[iO] > W) { crit++; critR += r[iV]; } }
     return { I, J, N, V, AH, crit, critR, dias: N ? I / N * 30 : null, n: L.length };
   }
+  // ---------- dashboard ----------
+  const DASH_MED = { V: ['Venda necessária', v => fmtRk(v)], J: ['Estoque a preço de tabela', v => fmtRk(v)], crit: ['Itens acima do alvo', v => fmtI.format(v)], dias: ['Dias de estoque', v => v == null ? '—' : fmt1.format(v) + ' dias'] };
+  const DASH_POR = { E: 'loja', B: 'regional', G: 'grupo' };
+  function barras(el, itens, fmt) {
+    const max = Math.max(0, ...itens.map(x => x.v || 0)) || 1;
+    el.innerHTML = itens.length ? itens.map(x => `<div class="row" role="listitem"><div class="lb" data-tip="${esc(x.tip || x.k)}">${esc(x.k)}</div><div class="tr" data-tip="${esc(x.tip || x.k)}"><div class="br" style="width:${Math.max(0, (x.v || 0) / max * 100).toFixed(2)}%"></div></div><div class="vl">${fmt(x.v)}</div></div>`).join('')
+      : '<span class="muted">Sem dados.</span>';
+  }
+  function colunas(el, elx, pts, fmt) {
+    const max = Math.max(0, ...pts.map(p => p.v || 0)) || 1;
+    el.innerHTML = pts.length ? pts.map(p => `<div class="c" data-tip="${esc(brDate(p.d) + ': ' + fmt(p.v))}" aria-label="${esc(brDate(p.d) + ': ' + fmt(p.v))}"><b>${fmt(p.v)}</b><i style="height:${((p.v || 0) / max * 85).toFixed(2)}%"></i></div>`).join('') : '<span class="muted">Ainda não há críticos salvos com totais.</span>';
+    elx.innerHTML = pts.map(p => `<span>${brDate(p.d).slice(0, 5)}</span>`).join('');
+  }
+  function renderDash() {
+    const snap = S.viewData;
+    if (!snap || !snap.linhas || !snap.linhas.length) { $('dashSub').textContent = 'Abra ou gere um crítico para ver o dashboard.'; $('dashTiles').innerHTML = ''; return; }
+    const ix = k => KEYS.indexOf(k), iI = ix('I'), iJ = ix('J'), iN = ix('N'), iO = ix('O'), iV = ix('V'), iE = ix('E'), iF = ix('F'), iH = ix('H');
+    const W = (snap.params && snap.params.diasAlvo) || 30, t = totais(snap);
+    const abertas = [...S.anot.values()].filter(ativa);
+    const ata = S.atas.find(a => a.status === 'finalizada') || S.atas[0];
+    const acoesAbertas = ata ? (ata.acoes || []).filter(x => x.status !== 'concluída').length : 0;
+    $('dashSub').textContent = 'Crítico de ' + brDate(snap.data) + ' · alvo de ' + W + ' dias. Passe o mouse nas barras para ver os detalhes.';
+    const tiles = [
+      ['Itens acima do alvo', fmtI.format(t.crit), fmt1.format(t.n ? t.crit / t.n * 100 : 0) + '% dos ' + fmtI.format(t.n) + ' itens'],
+      ['Venda necessária', fmtRk(t.critR), 'nos itens acima do alvo'],
+      ['Estoque a preço de tabela', fmtRk(t.J), t.AH ? ((t.J - t.AH >= 0 ? '+' : '−') + fmtRk(Math.abs(t.J - t.AH)) + ' vs. crítico anterior') : fmtI.format(t.I) + ' unidades'],
+      ['Dias de estoque (rede)', t.dias == null ? '—' : fmt1.format(t.dias), 'físico ÷ vendas c/ eventos × 30'],
+      ['Anotações abertas', fmtI.format(abertas.length), fmtI.format(new Set(abertas.map(a => a.loja)).size) + ' lojas'],
+      ['Ações abertas na ata', ata ? fmtI.format(acoesAbertas) : '—', ata ? 'ata de ' + brDate(ata.data) : 'nenhuma ata ainda']
+    ];
+    $('dashTiles').innerHTML = tiles.map(([a, b, c]) => `<div class="tile"><span class="eyebrow">${a}</span><span class="v">${b}</span><span class="s">${c}</span></div>`).join('');
+    // por loja / regional / grupo
+    const por = $('dash-por').value, med = $('dash-med').value, ip = ix(por), g = new Map();
+    for (const r of snap.linhas) {
+      const k = (r[ip] == null || r[ip] === '' ? '(sem ' + DASH_POR[por] + ')' : String(r[ip])).trim();
+      let o = g.get(k); if (!o) g.set(k, o = { I: 0, J: 0, N: 0, V: 0, crit: 0 });
+      o.I += r[iI] || 0; o.J += r[iJ] || 0; o.N += r[iN] || 0;
+      if (r[iI] > 0 && r[iO] > W) { o.crit++; o.V += r[iV] || 0; }
+    }
+    const [nome, fmt] = DASH_MED[med];
+    const todos = [...g].map(([k, o]) => ({ k, v: med === 'dias' ? (o.N ? o.I / o.N * 30 : null) : o[med], o })).sort((a, b) => (b.v ?? -1) - (a.v ?? -1));
+    const lim = 15;
+    const itens = todos.slice(0, lim).map(x => Object.assign(x, { tip: x.k + ' · ' + fmtI.format(x.o.crit) + ' itens acima do alvo · venda nec. ' + fmtRk(x.o.V) + ' · tabela ' + fmtRk(x.o.J) + ' · ' + (x.o.N ? fmt1.format(x.o.I / x.o.N * 30) : '—') + ' dias' }));
+    $('dashBarT').textContent = nome + ' por ' + DASH_POR[por];
+    barras($('dashBars'), itens, fmt);
+    $('dashBarMais').textContent = todos.length > lim ? 'Mostrando os ' + lim + ' maiores de ' + todos.length + '.' : '';
+    // evolução
+    const ex = S.execucoes.filter(x => x.totais).slice(0, 12).reverse();
+    colunas($('dashEvoJ'), $('dashEvoJx'), ex.map(x => ({ d: x.data, v: x.totais.J })), fmtRk);
+    colunas($('dashEvoC'), $('dashEvoCx'), ex.map(x => ({ d: x.data, v: x.totais.crit })), v => fmtI.format(v));
+    // top 10
+    const top = snap.linhas.filter(r => r[iI] > 0 && r[iO] > W).sort((a, b) => (b[iV] || 0) - (a[iV] || 0)).slice(0, 10);
+    $('dashTop').innerHTML = '<thead><tr><th>Loja</th><th>Produto</th><th class="n">Dias</th><th class="n">Venda nec.</th></tr></thead><tbody>' +
+      (top.length ? top.map(r => `<tr><td>${esc(String(r[iE] || ''))}</td><td>${esc(String(r[iH] || '').trim())} <span class="muted">${esc(normCod(r[iF]))}</span></td><td class="n">${r[iO] >= 9999 ? 'sem venda' : fmtI.format(r[iO])}</td><td class="n">${fmtR.format(r[iV] || 0)}</td></tr>`).join('') : '<tr><td colspan="4" class="muted">Nenhum item acima do alvo.</td></tr>') + '</tbody>';
+    // anotações por dono
+    const dn = new Map(); for (const a of abertas) { const k = (a.dono || '').trim() || '(sem dono)'; dn.set(k, (dn.get(k) || 0) + 1); }
+    barras($('dashDonos'), [...dn].map(([k, v]) => ({ k, v })).sort((a, b) => b.v - a.v).slice(0, 12), v => fmtI.format(v));
+  }
+  (function dashTip() {
+    const tip = document.createElement('div'); tip.className = 'dash-tip'; tip.hidden = true; document.body.appendChild(tip);
+    document.addEventListener('mousemove', e => {
+      const el = e.target.closest && e.target.closest('#dashPanel [data-tip]');
+      if (!el) { tip.hidden = true; return; }
+      tip.textContent = el.dataset.tip; tip.hidden = false;
+      const w = tip.offsetWidth, h = tip.offsetHeight;
+      tip.style.left = Math.max(8, Math.min(innerWidth - w - 8, e.clientX + 12)) + 'px'; tip.style.top = Math.max(8, e.clientY - h - 10) + 'px';
+    });
+  })();
   function showSnapshot(snap, fresh) {
     S.viewData = snap; S.view = snap.data;
     const ix = k => KEYS.indexOf(k);
@@ -717,7 +827,7 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
     fillSel('fl-reg', uniq('B'), 'Todas'); fillSel('fl-loja', uniq('E'), 'Todas'); fillSel('fl-grupo', uniq('G').map(s => s.trim()).filter((v, i, a) => a.indexOf(v) === i), 'Todos');
     $('btnDown').disabled = !S.rows.length; $('btnExport').disabled = !S.rows.length; $('btnExport2').disabled = !S.rows.length;
     S.sort = { k: 'J', dir: -1 }; // sempre classificado por R$ Tabela, do maior para o menor
-    S.shown = 200; renderTable(); renderHistory(); renderProj();
+    S.shown = 200; renderTable(); renderHistory(); renderProj(); renderDash();
   }
   function fillSel(id, vals, all) { const sel = $(id); const cur = sel.value; sel.innerHTML = `<option value="">${all}</option>` + vals.map(v => `<option>${esc(v)}</option>`).join(''); if (vals.includes(cur)) sel.value = cur; }
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -847,6 +957,7 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
     if (inp.type === 'date') inp.addEventListener('change', () => finish(true));
   }
   function renderNotes() {
+    if (S.viewData) queueMicrotask(renderDash);
     const arq = $('nt-arq').checked, lj = $('nt-loja').value, dn = $('nt-dono').value;
     const all = [...S.anot.values()];
     fillSel('nt-loja', [...new Set(all.map(a => a.loja))].sort((a, b) => a.localeCompare(b, 'pt-BR')), 'Todas');
@@ -1341,6 +1452,7 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
   $('r-all').addEventListener('change', e => e.target.files[0] && trocarRef(e.target.files[0], 'all'));
   $('btnBackup').addEventListener('click', baixarBackup);
   $('btnAtaNova').addEventListener('click', novaAta);
+  ['dash-por', 'dash-med'].forEach(id => $(id).addEventListener('change', renderDash));
   $('ata-sel').addEventListener('change', () => { S.ata = S.atas.find(a => a.id === $('ata-sel').value) || null; $('ataStatus').textContent = ''; renderAta(); });
   $('ataForm').addEventListener('input', e => {
     const el = e.target; if (!S.ata || ataTravada()) return;
