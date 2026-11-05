@@ -177,6 +177,13 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
 .dash-top { width: 100%; border-collapse: collapse; font-size: 12.5px; }
 .dash-top td, .dash-top th { padding: 5px 6px; border-bottom: 1px solid var(--line); text-align: left; white-space: normal; position: static; }
 .dash-top td.n, .dash-top th.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.modos { display: flex; justify-content: center; gap: 0; }
+.modos button { border-radius: 0; min-width: 130px; }
+.modos button:first-child { border-radius: 8px 0 0 8px; }
+.modos button:last-child { border-radius: 0 8px 8px 0; margin-left: -1px; }
+.modos button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+#app:not(.modo-dash) #dashPanel { display: none; }
+#app.modo-dash > :not(.userbar):not(.logo):not(header):not(.modos):not(#dashPanel) { display: none; }
 .logo { display: block; margin: 0 auto; width: min(300px, 80%); height: auto; border-radius: 12px; }
 .gate-card .logo { width: min(240px, 100%); margin-bottom: 4px; }
 .assinatura { text-align: center; color: var(--muted); font-size: 12.5px; padding: 18px 16px 26px; }
@@ -207,6 +214,11 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
     </div>
     <div class="refs" id="refChips"></div>
   </header>
+
+  <div class="modos" role="group" aria-label="Visualização">
+    <button type="button" id="modoCrit" aria-pressed="true">Crítico</button>
+    <button type="button" id="modoDash" aria-pressed="false">Dashboard</button>
+  </div>
 
   <section class="panel" aria-labelledby="hDash" id="dashPanel">
     <div class="panel-head">
@@ -1453,6 +1465,15 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
   $('btnBackup').addEventListener('click', baixarBackup);
   $('btnAtaNova').addEventListener('click', novaAta);
   ['dash-por', 'dash-med'].forEach(id => $(id).addEventListener('change', renderDash));
+  function modoDash(on) {
+    $('app').classList.toggle('modo-dash', on);
+    $('modoDash').setAttribute('aria-pressed', on); $('modoCrit').setAttribute('aria-pressed', !on);
+    try { localStorage.setItem('critico.modo', on ? 'dash' : 'crit'); } catch (e) { }
+    if (on) renderDash();
+  }
+  $('modoDash').addEventListener('click', () => modoDash(true));
+  $('modoCrit').addEventListener('click', () => modoDash(false));
+  try { if (localStorage.getItem('critico.modo') === 'dash') modoDash(true); } catch (e) { }
   $('ata-sel').addEventListener('change', () => { S.ata = S.atas.find(a => a.id === $('ata-sel').value) || null; $('ataStatus').textContent = ''; renderAta(); });
   $('ataForm').addEventListener('input', e => {
     const el = e.target; if (!S.ata || ataTravada()) return;
