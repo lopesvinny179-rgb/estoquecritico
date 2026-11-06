@@ -87,14 +87,31 @@ th[draggable="true"] { cursor: grab; }
 th.dragging { opacity: .45; }
 th.drop-before { box-shadow: inset 3px 0 0 var(--accent); }
 th.drop-after { box-shadow: inset -3px 0 0 var(--accent); }
-details.cols summary { cursor: pointer; font-weight: 600; font-size: 13px; }
-.col-list { list-style: none; margin: 10px 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 6px; }
-.col-list li { display: flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 7px; padding: 4px 6px 4px 10px; background: var(--surface); min-width: 0; }
+details.colsbox { border: 1px solid var(--line); border-radius: var(--r); padding: 8px 12px; margin: 10px 0; background: var(--surface); }
+details.colsbox summary { cursor: pointer; font-weight: 600; font-size: 13px; }
+.cols-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; }
+.cols-bar .muted { font-size: 12.5px; }
+.cols-grid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 18px; margin-top: 12px; }
+@media (max-width: 860px) { .cols-grid { grid-template-columns: 1fr; } }
+.cols-h { margin: 0 0 8px; font-size: 13px; }
+.cols-h small { font-weight: 400; }
+.col-grp { border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px 10px; margin: 0 0 8px; display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.col-grp legend { padding: 0 4px; font-size: 12.5px; font-weight: 600; }
+.col-grp legend label { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
+.chip { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px 3px 7px; font-size: 12.5px; cursor: pointer; background: var(--surface); user-select: none; }
+.chip.on { background: var(--accent-soft); border-color: var(--accent); }
+.chip input { margin: 0; }
+.col-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; max-height: 430px; overflow: auto; counter-reset: col; }
+.col-list li { display: flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 7px; padding: 3px 6px; background: var(--surface); min-width: 0; }
+.col-list li[data-k] { counter-increment: col; }
+.col-list li[data-k]::before { content: counter(col); min-width: 18px; text-align: right; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .col-list li[draggable="true"] { cursor: grab; }
 .col-list li.drop-before { box-shadow: inset 0 3px 0 var(--accent); }
+.col-list li .grip { color: var(--muted); font-size: 12px; letter-spacing: -2px; }
 .col-list li .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
-.col-list li.off .nm { color: var(--muted); text-decoration: line-through; }
-.col-list button { padding: 2px 8px; font-size: 12px; }
+.col-list button { padding: 1px 7px; font-size: 12px; }
+.mini td.note { text-align: left; font-size: 11px; min-width: 90px; max-width: 200px; padding: 2px 6px; }
+.mini td.note input { min-width: 120px; padding: 2px 4px; }
 td.note { text-align: left; white-space: normal; min-width: 120px; max-width: 260px; cursor: text; background: color-mix(in srgb, var(--accent-soft) 45%, transparent); }
 td.note.empty { color: var(--muted); }
 #ataForm input[type=text], #ataForm input[type=time], #ataForm textarea { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 7px; padding: 7px 9px; width: 100%; }
@@ -238,7 +255,7 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
       <span class="muted" id="dashSub">Visão geral do crítico aberto.</span>
     </div>
     <div class="dash-card" style="margin-bottom:14px">
-      <h3>Planilha do crítico <small>principais colunas · ordenada por venda necessária</small></h3>
+      <h3>Planilha do crítico <small>mesmas colunas da aba Crítico · ordenada por venda necessária · clique nos comentários para editar</small></h3>
       <div class="mini-tools">
         <div class="field"><label for="mini-loja">Loja</label><select id="mini-loja"></select></div>
         <div class="field"><label for="mini-busca">Buscar produto ou código</label><input type="search" id="mini-busca" placeholder="ex.: skol ou 000022"></div>
@@ -283,11 +300,24 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
       <label class="check"><input type="checkbox" id="fl-crit" checked> Só acima dos dias alvo</label>
       <label class="check"><input type="checkbox" id="fl-anot"> Só com anotação</label>
     </div>
-    <details class="cols" id="colsBox">
-      <summary>Organizar colunas</summary>
-      <p class="muted" style="margin:6px 0 0;font-size:12.5px">Arraste os títulos da tabela (ou os itens abaixo) para mudar a ordem. Desmarque para esconder. A ordem fica salva.</p>
-      <ul class="col-list" id="colList"></ul>
-      <div class="run-row" style="margin-top:8px"><button class="small" id="btnColReset">Restaurar ordem padrão</button></div>
+    <details class="colsbox" id="colsBox">
+      <summary>Organizar colunas <span class="muted" id="colsCount"></span></summary>
+      <div class="cols-bar">
+        <button class="small" type="button" id="btnColAll">Mostrar todas</button>
+        <button class="small" type="button" id="btnColEss">Só as principais</button>
+        <button class="small" type="button" id="btnColReset">Restaurar padrão</button>
+        <span class="muted">Vale para esta tabela e para a planilha do Dashboard. Fica salvo.</span>
+      </div>
+      <div class="cols-grid">
+        <div>
+          <h4 class="cols-h">1 · Escolha o que aparece</h4>
+          <div id="colGroups"></div>
+        </div>
+        <div>
+          <h4 class="cols-h">2 · Ordem das colunas <small class="muted">arraste ou use as setas</small></h4>
+          <ol class="col-list" id="colList"></ol>
+        </div>
+      </div>
     </details>
     <div class="tablebox"><table id="tbl"><thead></thead><tbody></tbody></table></div>
     <div class="more"><span class="muted num" id="countInfo"></span><button class="small" id="btnMore" hidden>Mostrar mais 200</button><button class="small" id="btnExport2" disabled>Exportar esta visão para Excel</button></div>
@@ -831,7 +861,6 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
     barras($('dashDonos'), [...dn].map(([k, v]) => ({ k, v })).sort((a, b) => b.v - a.v).slice(0, 12), v => fmtI.format(v));
   }
   S.miniN = 100;
-  const MINI_COLS = [['B', 'Regional', 'l'], ['E', 'Loja', 'l'], ['F', 'Código', 'l'], ['H', 'Descrição', 'l desc'], ['I', 'Físico'], ['J', 'R$ Tabela', 'rs'], ['N', 'Vendas c/ ev.'], ['O', 'Dias', 'dias'], ['R', 'Est. máx'], ['T', 'Venda nec. un'], ['V', 'Venda nec. R$', 'rs']];
   function renderMini() {
     const snap = S.viewData; if (!snap || !snap.linhas) { $('miniTbl').innerHTML = ''; $('mini-info').textContent = ''; return; }
     const ix = k => KEYS.indexOf(k), iE = ix('E'), iF = ix('F'), iH = ix('H'), iI = ix('I'), iO = ix('O'), iV = ix('V');
@@ -844,10 +873,23 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
     let L = snap.linhas.filter(r => (!lj || String(r[iE]) === lj) && (!so || acima(r)) && (!q || String(r[iH] || '').toLowerCase().includes(q) || normCod(r[iF]).includes(q.replace(/^0+/, '').padStart(6, '0')) || String(r[iF]).includes(q)));
     L.sort((a, b) => (b[iV] || 0) - (a[iV] || 0));
     const tot = L.length; L = L.slice(0, S.miniN);
-    const f = (k, v, t) => v == null || v === '' ? '' : t === 'rs' ? fmtR.format(v) : t === 'dias' ? (v >= 9999 ? 'sem venda' : fmtI.format(v)) : typeof v === 'number' ? fmtI.format(v) : esc(String(v).trim());
-    $('miniTbl').innerHTML = '<thead><tr>' + MINI_COLS.map(([, n, t]) => `<th class="${t && t.startsWith('l') ? 'l' : ''}">${n}</th>`).join('') + '<th class="l">Anotação</th></tr></thead><tbody>' +
-      L.map(r => { const a = anotDe(r); return `<tr class="${acima(r) ? 'crit' : ''}">` + MINI_COLS.map(([k, , t]) => `<td class="${t || ''}"${k === 'H' ? ` title="${esc(String(r[iH] || '').trim())}"` : ''}>${k === 'F' ? esc(normCod(r[iF])) : f(k, r[ix(k)], t)}</td>`).join('') + `<td class="l an"${a ? ` title="${esc(notaTxt(a))}"` : ''}>${a ? esc(notaTxt(a)) : ''}</td></tr>`; }).join('') +
-      (tot ? '' : '<tr><td class="l" colspan="12">Nenhum item com esses filtros.</td></tr>') + '</tbody>';
+    const VC = visibleCols();
+    const cel = (r, [k, , t]) => {
+      if (t === 'note') return noteTd(NOTE_F[k], val(r, k), `data-loja="${esc(r[iE])}" data-cod="${esc(r[iF])}" data-desc="${esc(String(r[iH] || '').trim())}" title="Clique para editar"`);
+      const v = r[ix(k)];
+      if (k === 'D') return `<td class="l">${String(v).toUpperCase() === 'OK' ? '<span class="pill top">Top 20</span>' : ''}</td>`;
+      if (k === 'F') return `<td class="l">${esc(normCod(v))}</td>`;
+      if (v == null || v === '') return `<td class="${t || ''}"></td>`;
+      if (t && t.startsWith('l')) return `<td class="${t}" title="${esc(String(v).trim())}">${esc(String(v).trim())}</td>`;
+      if (typeof v !== 'number') return `<td>${esc(v)}</td>`;
+      if (t === 'rs') return `<td class="rs">${fmtR.format(v)}</td>`;
+      if (t === 'dias') return `<td class="dias">${v >= 9999 ? 'sem venda' : fmtI.format(v)}</td>`;
+      if (t === 'd1') return `<td>${fmt1.format(v)}</td>`;
+      return `<td>${fmtI.format(v)}</td>`;
+    };
+    $('miniTbl').innerHTML = '<thead><tr>' + VC.map(([, n, t]) => `<th class="${t && (t.startsWith('l') || t === 'note') ? 'l' : ''}">${n}</th>`).join('') + '</tr></thead><tbody>' +
+      L.map(r => `<tr class="${acima(r) ? 'crit' : ''}">` + VC.map(c => cel(r, c)).join('') + '</tr>').join('') +
+      (tot ? '' : `<tr><td class="l" colspan="${VC.length || 1}">Nenhum item com esses filtros.</td></tr>`) + '</tbody>';
     $('mini-info').textContent = fmtI.format(Math.min(tot, S.miniN)) + ' de ' + fmtI.format(tot) + ' itens';
     $('miniMais').hidden = tot <= S.miniN;
   }
@@ -921,15 +963,42 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
     let i = o.indexOf(target); if (i < 0) return;
     if (after) i++;
     o.splice(i, 0, k); colOrder = o;
-    saveColPrefs(); renderColList(); renderTable();
+    colsMudou();
+  }
+  const COL_GRUPOS = [
+    ['Produto e loja', ['B', 'D', 'E', 'F', 'H']],
+    ['Estoque', ['I', 'J', 'R', 'AG']],
+    ['Vendas', ['L', 'N', 'O']],
+    ['Compras', ['P', 'Q']],
+    ['Venda necessária', ['T', 'U', 'V']],
+    ['Comentários (anotações)', ['W', 'X', 'Y', 'Z']],
+    ['Execução e comparação', ['AD', 'AF', 'AI']]
+  ];
+  const COL_ESSENCIAIS = ['B', 'E', 'F', 'H', 'I', 'J', 'N', 'O', 'V', 'W', 'X', 'Y', 'Z'];
+  const colNome = k => (COLS.find(c => c[0] === k) || [k, k])[1];
+  function colGrupos() {
+    const usados = new Set(COL_GRUPOS.flatMap(g => g[1]));
+    const resto = COL_DEF.filter(k => !usados.has(k));
+    return COL_GRUPOS.map(([n, ks]) => [n, ks.filter(k => COL_DEF.includes(k))]).concat(resto.length ? [['Outras', resto]] : []);
   }
   function renderColList() {
-    $('colList').innerHTML = colOrder.map((k, i) => {
-      const c = COLS.find(x => x[0] === k);
-      return `<li draggable="true" data-k="${k}" class="${colOff.has(k) ? 'off' : ''}"><input type="checkbox" id="colchk-${k}" data-k="${k}" ${colOff.has(k) ? '' : 'checked'} aria-label="Mostrar ${esc(c[1])}"><label class="nm" for="colchk-${k}">${esc(c[1])}</label>` +
-        `<button class="small" data-mv="-1" data-k="${k}" ${i === 0 ? 'disabled' : ''} aria-label="Mover ${esc(c[1])} para a esquerda">←</button><button class="small" data-mv="1" data-k="${k}" ${i === colOrder.length - 1 ? 'disabled' : ''} aria-label="Mover ${esc(c[1])} para a direita">→</button></li>`;
+    const vis = colOrder.filter(k => !colOff.has(k));
+    $('colsCount').textContent = '· ' + vis.length + ' de ' + COL_DEF.length + ' visíveis';
+    $('colGroups').innerHTML = colGrupos().map(([nome, ks], gi) => {
+      const on = ks.filter(k => !colOff.has(k)).length;
+      return `<fieldset class="col-grp"><legend><label><input type="checkbox" data-grp="${gi}" ${on === ks.length ? 'checked' : ''} ${on && on < ks.length ? 'data-meio="1"' : ''}> ${esc(nome)}</label></legend>` +
+        ks.map(k => `<label class="chip${colOff.has(k) ? '' : ' on'}"><input type="checkbox" data-k="${k}" ${colOff.has(k) ? '' : 'checked'}>${esc(colNome(k))}</label>`).join('') + '</fieldset>';
     }).join('');
+    $('colGroups').querySelectorAll('input[data-meio]').forEach(x => { x.indeterminate = true; });
+    $('colList').innerHTML = vis.map((k, i) => {
+      const n = esc(colNome(k));
+      return `<li draggable="true" data-k="${k}"><span class="grip" aria-hidden="true">⋮⋮</span><span class="nm">${n}</span>` +
+        `<button class="small" type="button" data-mv="-1" data-k="${k}" ${i === 0 ? 'disabled' : ''} aria-label="Mover ${n} para cima" title="Mover para cima">↑</button>` +
+        `<button class="small" type="button" data-mv="1" data-k="${k}" ${i === vis.length - 1 ? 'disabled' : ''} aria-label="Mover ${n} para baixo" title="Mover para baixo">↓</button>` +
+        `<button class="small" type="button" data-off="${k}" aria-label="Esconder ${n}" title="Esconder">✕</button></li>`;
+    }).join('') || '<li class="muted">Nenhuma coluna visível. Marque alguma ao lado.</li>';
   }
+  function colsMudou() { saveColPrefs(); renderColList(); renderTable(); renderMini(); }
   function wireDrag(container, itemSel, horizontal) {
     let dragK = null;
     const clear = () => container.querySelectorAll('.drop-before,.drop-after,.dragging').forEach(x => x.classList.remove('drop-before', 'drop-after', 'dragging'));
@@ -1006,7 +1075,7 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
         td.classList.add('saving'); td.textContent = noteTxt(f, v);
         try { await saveAnot(loja, cod, td.dataset.desc, { [f]: v }); } catch (e) { log('Não consegui salvar a anotação: ' + (e.message || e.code), 'err'); }
         td.classList.remove('saving');
-        fillDatalists(); renderNotes(); if (!td.closest('#tbl')) return; renderTable();
+        fillDatalists(); renderNotes(); renderTable();
       } else { td.textContent = noteTxt(f, cur); td.classList.toggle('empty', !cur); }
     };
     inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); finish(true); } else if (e.key === 'Escape') finish(false); });
@@ -1575,7 +1644,8 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
   const editClick = e => { const td = e.target.closest('td.note'); if (td && !e.target.closest('input')) startEdit(td); };
   $('tbl').addEventListener('click', editClick, true);
   $('notesTbl').addEventListener('click', editClick);
-  for (const id of ['tbl', 'notesTbl']) $(id).addEventListener('keydown', e => { const td = e.target.closest && e.target.closest('td.note'); if (td && e.target === td && (e.key === 'Enter' || e.key === 'F2')) { e.preventDefault(); startEdit(td); } });
+  $('miniTbl').addEventListener('click', editClick);
+  for (const id of ['tbl', 'notesTbl', 'miniTbl']) $(id).addEventListener('keydown', e => { const td = e.target.closest && e.target.closest('td.note'); if (td && e.target === td && (e.key === 'Enter' || e.key === 'F2')) { e.preventDefault(); startEdit(td); } });
   $('notesTbl').addEventListener('click', async e => {
     const b = e.target.closest('button[data-arq]'); if (!b) return;
     b.disabled = true;
@@ -1597,9 +1667,22 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
   $('tbl').addEventListener('click', e => { const th = e.target.closest('th'); if (!th) return; const k = th.dataset.k; S.sort = { k, dir: S.sort.k === k ? -S.sort.dir : -1 }; renderTable(); });
   wireDrag($('tbl'), 'th', true);
   wireDrag($('colList'), 'li', false);
-  $('colList').addEventListener('change', e => { const k = e.target.dataset.k; if (!k) return; if (e.target.checked) colOff.delete(k); else colOff.add(k); saveColPrefs(); renderColList(); renderTable(); });
-  $('colList').addEventListener('click', e => { const b = e.target.closest('button[data-mv]'); if (!b) return; const k = b.dataset.k, i = colOrder.indexOf(k), j = i + (+b.dataset.mv); if (j < 0 || j >= colOrder.length) return; moveCol(k, colOrder[j], +b.dataset.mv > 0); });
-  $('btnColReset').addEventListener('click', () => { colOrder = COL_DEF.slice(); colOff = new Set(); saveColPrefs(); renderColList(); renderTable(); });
+  $('colGroups').addEventListener('change', e => {
+    const t = e.target;
+    if (t.dataset.grp != null) { const ks = colGrupos()[+t.dataset.grp][1]; ks.forEach(k => t.checked ? colOff.delete(k) : colOff.add(k)); }
+    else if (t.dataset.k) { if (t.checked) colOff.delete(t.dataset.k); else colOff.add(t.dataset.k); }
+    else return;
+    colsMudou();
+  });
+  $('colList').addEventListener('click', e => {
+    const off = e.target.closest('button[data-off]'); if (off) { colOff.add(off.dataset.off); colsMudou(); return; }
+    const b = e.target.closest('button[data-mv]'); if (!b) return;
+    const vis = colOrder.filter(k => !colOff.has(k)); const k = b.dataset.k, j = vis.indexOf(k) + (+b.dataset.mv);
+    if (j < 0 || j >= vis.length) return; moveCol(k, vis[j], +b.dataset.mv > 0);
+  });
+  $('btnColAll').addEventListener('click', () => { colOff = new Set(); colsMudou(); });
+  $('btnColEss').addEventListener('click', () => { colOff = new Set(COL_DEF.filter(k => !COL_ESSENCIAIS.includes(k))); colsMudou(); });
+  $('btnColReset').addEventListener('click', () => { colOrder = COL_DEF.slice(); colOff = new Set(); colsMudou(); });
   $('history').addEventListener('click', e => { const b = e.target.closest('button'); if (b) openExecucao(b.dataset.id); });
   $('p-data').addEventListener('change', () => { const d = $('p-data').value; if (!d) return; $('p-mes').value = prevMonth(d); $('p-de').value = addDays(d, -6); $('p-ate').value = addDays(d, -2); renderAntSelect(); });
   $('btnSaveRules').addEventListener('click', saveRules);
@@ -1720,7 +1803,7 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
     try {
       const st = await S.db.doc('estado/atual').get();
       S.estado = st.exists ? st.data() : {};
-      if (S.estado.colunas) { applyColPrefs(S.estado.colunas); renderColList(); renderTable(); }
+      if (S.estado.colunas) { applyColPrefs(S.estado.colunas); renderColList(); renderTable(); renderMini(); }
       if (S.estado.cfg) S.cfg = Object.assign(JSON.parse(JSON.stringify(E.DEFAULT_CFG)), S.estado.cfg);
       renderRules();
       try { await loadAnot(); } catch (e) { log('Não consegui ler as anotações: ' + (e.message || e.code), 'err'); }
