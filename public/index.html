@@ -237,6 +237,17 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
       <h2 id="hDash">Dashboard</h2>
       <span class="muted" id="dashSub">Visão geral do crítico aberto.</span>
     </div>
+    <div class="dash-card" style="margin-bottom:14px">
+      <h3>Planilha do crítico <small>principais colunas · ordenada por venda necessária</small></h3>
+      <div class="mini-tools">
+        <div class="field"><label for="mini-loja">Loja</label><select id="mini-loja"></select></div>
+        <div class="field"><label for="mini-busca">Buscar produto ou código</label><input type="search" id="mini-busca" placeholder="ex.: skol ou 000022"></div>
+        <label class="check"><input type="checkbox" id="mini-crit" checked> Só acima do alvo</label>
+        <span class="muted" id="mini-info"></span>
+      </div>
+      <div class="mini-wrap"><table class="mini" id="miniTbl"></table></div>
+      <div><button class="small" id="miniMais" type="button">Mostrar mais 100</button></div>
+    </div>
     <div class="tiles" id="dashTiles"></div>
     <div class="dash-ctrl">
       <div class="field"><label for="dash-por">Ver por</label><select id="dash-por"><option value="E">Loja</option><option value="B">Regional</option><option value="G">Grupo</option></select></div>
@@ -248,17 +259,6 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
       <div class="dash-card"><h3>Itens acima do alvo <small>por crítico</small></h3><div class="cols" id="dashEvoC"></div><div class="cols-x" id="dashEvoCx"></div></div>
       <div class="dash-card"><h3>Top 10 itens <small>maior venda necessária</small></h3><div style="overflow-x:auto"><table class="dash-top" id="dashTop"></table></div></div>
       <div class="dash-card"><h3>Anotações abertas <small>por dono</small></h3><div class="hb" id="dashDonos" role="list"></div></div>
-    </div>
-    <div class="dash-card">
-      <h3>Planilha do crítico <small>principais colunas · ordenada por venda necessária</small></h3>
-      <div class="mini-tools">
-        <div class="field"><label for="mini-loja">Loja</label><select id="mini-loja"></select></div>
-        <div class="field"><label for="mini-busca">Buscar produto ou código</label><input type="search" id="mini-busca" placeholder="ex.: skol ou 000022"></div>
-        <label class="check"><input type="checkbox" id="mini-crit" checked> Só acima do alvo</label>
-        <span class="muted" id="mini-info"></span>
-      </div>
-      <div class="mini-wrap"><table class="mini" id="miniTbl"></table></div>
-      <div><button class="small" id="miniMais" type="button">Mostrar mais 100</button></div>
     </div>
   </section>
 
