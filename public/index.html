@@ -262,6 +262,38 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
     </div>
   </section>
 
+  <section class="panel" aria-labelledby="hRes" id="resPanel" data-aba="critico">
+    <div class="panel-head">
+      <div style="display:grid;gap:4px">
+        <span class="eyebrow" id="resEyebrow">Crítico</span>
+        <h2 id="hRes">Nenhum crítico carregado</h2>
+      </div>
+      <div class="run-row">
+        <div class="history" id="history" aria-label="Críticos salvos"></div>
+        <button id="btnDown" disabled title="Planilha completa, com as 35 colunas, fórmulas e abas de apoio">Baixar crítico completo</button>
+        <button class="primary" id="btnExport" disabled title="Exporta o que está na tela: filtros, ordem e colunas visíveis">Exportar para Excel</button>
+      </div>
+    </div>
+    <div class="filters">
+      <div class="field"><label for="fl-reg">Regional</label><select id="fl-reg"><option value="">Todas</option></select></div>
+      <div class="field"><label for="fl-loja">Loja</label><select id="fl-loja"><option value="">Todas</option></select></div>
+      <div class="field"><label for="fl-grupo">Grupo</label><select id="fl-grupo"><option value="">Todos</option></select></div>
+      <div class="field"><label for="fl-q">Buscar produto</label><input type="search" id="fl-q" placeholder="código ou descrição"></div>
+      <label class="check"><input type="checkbox" id="fl-top"> Só Top 20</label>
+      <label class="check"><input type="checkbox" id="fl-crit" checked> Só acima dos dias alvo</label>
+      <label class="check"><input type="checkbox" id="fl-anot"> Só com anotação</label>
+    </div>
+    <details class="cols" id="colsBox">
+      <summary>Organizar colunas</summary>
+      <p class="muted" style="margin:6px 0 0;font-size:12.5px">Arraste os títulos da tabela (ou os itens abaixo) para mudar a ordem. Desmarque para esconder. A ordem fica salva.</p>
+      <ul class="col-list" id="colList"></ul>
+      <div class="run-row" style="margin-top:8px"><button class="small" id="btnColReset">Restaurar ordem padrão</button></div>
+    </details>
+    <div class="tablebox"><table id="tbl"><thead></thead><tbody></tbody></table></div>
+    <div class="more"><span class="muted num" id="countInfo"></span><button class="small" id="btnMore" hidden>Mostrar mais 200</button><button class="small" id="btnExport2" disabled>Exportar esta visão para Excel</button></div>
+    <div class="tiles" id="tiles" style="margin-top:14px"></div>
+  </section>
+
   <section class="panel" aria-labelledby="hUpd" data-aba="critico">
     <div class="panel-head">
       <h2 id="hUpd">Atualizar o crítico</h2>
@@ -301,38 +333,6 @@ details.rules summary { cursor: pointer; font-family: var(--display); font-weigh
       <span class="muted num" id="runStatus">Falta escolher os arquivos.</span>
     </div>
     <ul class="log" id="log" aria-live="polite"></ul>
-  </section>
-
-  <section class="panel" aria-labelledby="hRes" id="resPanel" data-aba="critico">
-    <div class="panel-head">
-      <div style="display:grid;gap:4px">
-        <span class="eyebrow" id="resEyebrow">Crítico</span>
-        <h2 id="hRes">Nenhum crítico carregado</h2>
-      </div>
-      <div class="run-row">
-        <div class="history" id="history" aria-label="Críticos salvos"></div>
-        <button id="btnDown" disabled title="Planilha completa, com as 35 colunas, fórmulas e abas de apoio">Baixar crítico completo</button>
-        <button class="primary" id="btnExport" disabled title="Exporta o que está na tela: filtros, ordem e colunas visíveis">Exportar para Excel</button>
-      </div>
-    </div>
-    <div class="tiles" id="tiles"></div>
-    <div class="filters">
-      <div class="field"><label for="fl-reg">Regional</label><select id="fl-reg"><option value="">Todas</option></select></div>
-      <div class="field"><label for="fl-loja">Loja</label><select id="fl-loja"><option value="">Todas</option></select></div>
-      <div class="field"><label for="fl-grupo">Grupo</label><select id="fl-grupo"><option value="">Todos</option></select></div>
-      <div class="field"><label for="fl-q">Buscar produto</label><input type="search" id="fl-q" placeholder="código ou descrição"></div>
-      <label class="check"><input type="checkbox" id="fl-top"> Só Top 20</label>
-      <label class="check"><input type="checkbox" id="fl-crit" checked> Só acima dos dias alvo</label>
-      <label class="check"><input type="checkbox" id="fl-anot"> Só com anotação</label>
-    </div>
-    <details class="cols" id="colsBox">
-      <summary>Organizar colunas</summary>
-      <p class="muted" style="margin:6px 0 0;font-size:12.5px">Arraste os títulos da tabela (ou os itens abaixo) para mudar a ordem. Desmarque para esconder. A ordem fica salva.</p>
-      <ul class="col-list" id="colList"></ul>
-      <div class="run-row" style="margin-top:8px"><button class="small" id="btnColReset">Restaurar ordem padrão</button></div>
-    </details>
-    <div class="tablebox"><table id="tbl"><thead></thead><tbody></tbody></table></div>
-    <div class="more"><span class="muted num" id="countInfo"></span><button class="small" id="btnMore" hidden>Mostrar mais 200</button><button class="small" id="btnExport2" disabled>Exportar esta visão para Excel</button></div>
   </section>
 
   <section class="panel" aria-labelledby="hProj" id="projPanel" data-aba="proj">
